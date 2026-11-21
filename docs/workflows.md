@@ -2,11 +2,11 @@
 
 ## At the counter
 
-The customer joins the shop wifi. The name and password are in `data/wifi` (created the first time the shop starts) and should be written where they can see them. The page opens by itself when that is possible. If it does not, they type the address printed when the shop started, usually `10.42.0.1`.
+The customer joins the shop wifi, whether they type the password or scan a code. The name and password are on the counter and in `data/wifi` (created the first time the shop starts), and should also be written where they can see them. The page opens by itself when the phone allows it. If it does not, they type the address on the counter, usually `10.42.0.1`. If the small window that opens will not let them choose a file, they open their own browser and type that same address.
 
 They choose one file and send it. The page shows a short number. They say that number out loud.
 
-On this computer, `scripts/open-counter` opens the counter. Files that arrived while it was closed are already there. The number matches. They choose pages and how many copies, then press Print. The page is shown in grey because the printer is black and white.
+On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and press Ctrl+C to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there. The number matches. They choose pages and how many copies, then press Print. The page is shown in grey because the printer is black and white.
 
 Try again prepares a file that failed. Print again sends one that already went, or one the printer refused. Remove throws it away. A second print of a file that is already printing is refused. New files play a short sound after the counter has been clicked once, which is a limit of the browser, and the list updates on its own.
 

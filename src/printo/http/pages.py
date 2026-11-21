@@ -1,14 +1,16 @@
 """The two screens. Phones get the send page. The counter is only for the laptop, because it lives under /admin.
 
-A phone that just joined the wifi often opens some other address first, to see if the internet is there.
-Any ordinary address answers with the send page, so that check lands in the right place instead of an error.
+A phone that just joined the wifi opens some other address first, to see if the internet is there.
+That address is sent to the send page. Answering it directly would tell the phone there is nothing to open.
 """
 
 from pathlib import Path
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from starlette.exceptions import HTTPException
+
+from printo.http.portal import to_portal
 
 _ROOT = Path(__file__).resolve().parents[1] / "web"
 _PAGE = {
@@ -62,13 +64,13 @@ def counter_asset(name: str) -> FileResponse:
     return _known(_COUNTER, name)
 
 
-@router.get("/{path:path}")
-def any_other_page(path: str) -> FileResponse:
-    # Admin paths that are not a real route stay hidden. Everything else is the send page,
+@router.api_route("/{path:path}", methods=["GET", "HEAD"])
+def any_other_page(path: str, request: Request) -> RedirectResponse:
+    # Admin paths that are not a real route stay hidden. Everything else goes to the send page,
     # including the addresses phones use to test a wifi network.
     if path == "admin" or path.startswith("admin/"):
         raise HTTPException(404)
-    return _html("customer/index.html")
+    return to_portal(request)
 
 
 def _html(rel: str) -> FileResponse:

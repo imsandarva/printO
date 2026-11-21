@@ -26,7 +26,21 @@ function boot() {
   window.setInterval(loadPrinter, 8000);
   loadPrinter();
   loadJobs();
+  loadFront();
   listen();
+}
+
+async function loadFront() {
+  const node = document.getElementById("front");
+  if (!node) return;
+  try {
+    const body = await readJSON("/admin/front");
+    if (!body.ok || !body.message) return;
+    node.hidden = false;
+    node.textContent = body.message;
+  } catch {
+    node.hidden = true;
+  }
 }
 
 function refresh() { loadJobs(); loadPrinter(); }

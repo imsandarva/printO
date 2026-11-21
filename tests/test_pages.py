@@ -10,9 +10,12 @@ def test_phone_sees_the_send_page_and_not_the_counter(tmp_path):
         assert "/admin" not in page.text
         assert phone.get("/c/customer.js").status_code == 200
         assert "Choose a file" in phone.get("/c/customer.js").text
-        probe = phone.get("/hotspot-detect.html")
-        assert probe.status_code == 200 and "text/html" in probe.headers["content-type"]
-        assert "text/html" in phone.get("/generate_204").headers["content-type"]
+        assert "open your browser" in page.text
+        probe = phone.get("/hotspot-detect.html", follow_redirects=False)
+        assert probe.status_code == 302 and probe.headers["location"].endswith("/")
+        assert "hotspot-detect" not in probe.headers["location"]
+        again = phone.get("/generate_204", follow_redirects=False)
+        assert again.status_code == 302 and again.headers["cache-control"] == "no-store"
         for path in ("/admin", "/admin/", "/admin/c/counter.js", "/admin/jobs"):
             denied = phone.get(path)
             assert denied.status_code == 404 and "isn't available" in denied.json()["message"]

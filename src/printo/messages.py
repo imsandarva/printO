@@ -176,6 +176,13 @@ def running() -> str:
     return "printO is running."
 
 
+def front_desk(name: str, password: str, address: str) -> str:
+    line = f"Customers join {name}. The password is {password}."
+    if address:
+        line += f" If the page doesn't open on its own, they can type {address}."
+    return line
+
+
 def connected() -> str:
     return "Connected."
 

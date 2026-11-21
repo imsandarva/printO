@@ -6,7 +6,7 @@ Citizenship copies and double-sided books are intentionally not in this version.
 
 ## Pieces
 
-The entrypoint (`printo`) only loads settings and starts the process. `wiring.py` connects the pieces. Each piece does one job.
+The entrypoint (`printo`) only loads settings and starts the process. `wiring.py` connects the pieces. Each piece does one job. The process does not manage wifi. `scripts/start-shop` does, and it is the thing you leave open.
 
 | Piece | What it owns |
 | --- | --- |
@@ -39,7 +39,15 @@ Two clicks cannot both print the same file: the status change happens in one SQL
 
 ## Who can see what
 
-The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page. Any other address on this port is the send page, so a phone checking whether the wifi has internet still lands there. Customers get back a short number and nothing else: no list, no download, no other people's files. The counter page is under `/admin`, so a phone cannot open it.
+The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page. Any other address is sent to the send page. Customers get back a short number and nothing else: no list, no download, no other people's files. The counter page is under `/admin`, so a phone cannot open it.
+
+## Why the page opens on a phone
+
+A phone that joins the wifi asks a known address, over plain HTTP, whether the internet is there. iPhones ask `captive.apple.com`. Android phones ask `connectivitycheck.gstatic.com`. Sending that check to our page is what makes the phone open it. The check runs the same way whether the password was typed or a code was scanned.
+
+The hotspot's name server answers every name with this computer, for IPv4 and for IPv6, straight away. Waiting on the internet, which this wifi does not have, is what makes a phone give up and show nothing. Port 80 on that wifi is handed to this process, and the check is sent to the send page. The address to type is the one printed when the shop started, usually `10.42.0.1`.
+
+Some phones show a sign-in notice instead of opening the page, and the small window they use sometimes cannot choose a file. The page and the counter both give the address to type in the phone's own browser.
 
 ## Power cuts and disk
 
@@ -55,6 +63,8 @@ If the queue says the printer is off or unplugged, the file is not submitted. Se
 
 ## What starts when
 
-At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter is not started here. Open it by hand with `scripts/open-counter`, which is a window onto `http://127.0.0.1:8088/admin/`.
+`scripts/start-shop` is the shop. It turns this computer into the hotspot, starts this process in that same window, and opens the counter. Press Ctrl+C there to stop. That closes the page even if a phone still has it open, turns the hotspot off, and tries to put the previous wifi back.
 
-Until that boot setup exists, `scripts/start-shop` turns the hotspot on and runs this process. Closing that command turns the hotspot off and tries to restore the wifi this computer was using. The preview on the counter is grey because the MF3010 prints black and white.
+`scripts/open-counter` only opens the counter again, if that window was closed. It does not start a second copy.
+
+At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter is not started there. The preview on the counter is grey because the MF3010 prints black and white.

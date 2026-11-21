@@ -1,0 +1,189 @@
+# The shop wifi. The Python process never touches this. Start-shop is the only caller.
+# It expects ROOT, PORT, and PYTHON, and it fills IFACE, PREVIOUS, STARTED, SUDO_KEEP, SSID, PASS.
+
+wifi_iface() {
+  if [[ -n "${PRINTO_WIFI_IFACE:-}" ]]; then printf '%s\n' "$PRINTO_WIFI_IFACE"; return; fi
+  nmcli -t -f DEVICE,TYPE device | awk -F: '$2=="wifi" { print $1; exit }'
+}
+
+read_wifi() {
+  local file="$ROOT/data/wifi" line key val
+  mkdir -p "$ROOT/data"
+  if [[ ! -f "$file" ]]; then
+    printf 'ssid=printO\npassword=printo123\n' > "$file"
+    chmod 600 "$file"
+  fi
+  SSID="printO"
+  PASS="printo123"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    key="${line%%=*}"
+    val="${line#*=}"
+    case "$key" in
+      ssid) SSID="$val" ;;
+      password) PASS="$val" ;;
+    esac
+  done < "$file"
+  if [[ -z "$SSID" || ${#PASS} -lt 8 ]]; then
+    printf '%s\n' "The wifi name or password in data/wifi isn't usable. The password needs at least 8 characters."
+    exit 1
+  fi
+}
+
+note_address() {
+  local address="$1" file="$ROOT/data/wifi" tmp
+  [[ -f "$file" ]] || return 0
+  tmp="$(mktemp)"
+  awk -F= -v addr="$address" 'BEGIN { OFS = "=" } $1 == "address" { next } NF { print } END { print "address=" addr }' "$file" > "$tmp"
+  mv "$tmp" "$file"
+  chmod 600 "$file"
+}
+
+remember_previous() {
+  PREVIOUS="$(nmcli -t -f NAME,TYPE,DEVICE connection show --active | python3 -c '
+import sys
+iface = sys.argv[1]
+for line in sys.stdin:
+    parts = line.rstrip("\n").split(":")
+    if len(parts) < 3:
+        continue
+    device, kind, name = parts[-1], parts[-2], ":".join(parts[:-2])
+    if kind == "802-11-wireless" and device == iface and name != "printO":
+        print(name)
+        break
+' "$IFACE")"
+}
+
+have_hotspot() {
+  nmcli -t -f NAME connection show | grep -Fxq 'printO'
+}
+
+shop_address() {
+  local ip="" tries=0
+  while [[ "$tries" -lt 10 ]]; do
+    ip="$(nmcli -g IP4.ADDRESS device show "$IFACE" 2>/dev/null | head -n 1 | cut -d/ -f1 || true)"
+    if [[ -n "$ip" ]]; then printf '%s\n' "$ip"; return; fi
+    tries=$((tries + 1))
+    sleep 0.3
+  done
+  printf '%s\n' "10.42.0.1"
+}
+
+bring_hotspot() {
+  command -v nmcli >/dev/null || { printf '%s\n' "This computer can't share a wifi hotspot."; exit 1; }
+  IFACE="$(wifi_iface)"
+  [[ -n "$IFACE" ]] || { printf '%s\n' "This computer doesn't have a wifi device that can be a hotspot."; exit 1; }
+  nmcli radio wifi on >/dev/null
+  remember_previous
+  if have_hotspot; then
+    nmcli connection modify printO connection.interface-name "$IFACE" 802-11-wireless.mode ap \
+      802-11-wireless.ssid "$SSID" 802-11-wireless.band bg 802-11-wireless-security.key-mgmt wpa-psk \
+      802-11-wireless-security.psk "$PASS" ipv4.method shared ipv4.addresses 10.42.0.1/24 \
+      ipv6.method disabled connection.autoconnect no
+  else
+    nmcli device wifi hotspot ifname "$IFACE" con-name printO ssid "$SSID" password "$PASS" band bg >/dev/null
+    nmcli connection modify printO ipv6.method disabled connection.autoconnect no ipv4.addresses 10.42.0.1/24
+  fi
+  nmcli connection up printO >/dev/null
+  HOT=1
+}
+
+keep_sudo() {
+  # A long shop day outlives one password prompt. Refresh it away from Ctrl+C.
+  setsid bash -c 'while sudo -n -v >/dev/null 2>&1; do sleep 50; done' >/dev/null 2>&1 &
+  SUDO_KEEP=$!
+}
+
+install_dns() {
+  local tmp
+  tmp="$(mktemp)"
+  "$PYTHON" -c 'import sys; from printo.shopnet import dns_config; sys.stdout.write(dns_config(sys.argv[1]))' "$1" > "$tmp"
+  sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+  sudo cp "$tmp" /etc/NetworkManager/dnsmasq-shared.d/printo.conf
+  sudo chmod 644 /etc/NetworkManager/dnsmasq-shared.d/printo.conf
+  rm -f "$tmp"
+}
+
+bounce_hotspot() {
+  # The name server reads its file only as it starts.
+  nmcli connection down printO >/dev/null 2>&1 || true
+  nmcli connection up printO >/dev/null
+}
+
+dns_ready() {
+  "$PYTHON" -c 'import sys
+from printo.shopnet import records
+ip = sys.argv[1]
+found = records(ip, "captive.apple.com", "A", 1.2)
+other = records(ip, "captive.apple.com", "AAAA", 1.2)
+raise SystemExit(0 if found == [ip] and other is not None else 1)' "$1"
+}
+
+wait_dns() {
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if dns_ready "$1"; then return 0; fi
+    sleep 0.3
+  done
+  return 1
+}
+
+clear_old_redirect() {
+  [[ -n "${IFACE:-}" && -n "${PORT:-}" ]] || return 0
+  sudo -n iptables -t nat -D PREROUTING -i "$IFACE" -p tcp --dport 80 -j REDIRECT --to-ports "$PORT" >/dev/null 2>&1 || true
+}
+
+install_redirect() {
+  # Port 80 is where a phone looks. Nothing else on that wifi should sit and time out.
+  sudo nft delete table ip printo >/dev/null 2>&1 || true
+  sudo nft add table ip printo || return 1
+  sudo nft add chain ip printo pre '{ type nat hook prerouting priority dstnat; policy accept; }' || return 1
+  sudo nft add rule ip printo pre iifname "$IFACE" tcp dport 80 redirect to :"$PORT" || return 1
+  sudo nft add chain ip printo block '{ type filter hook forward priority filter; policy accept; }' || return 1
+  sudo nft add rule ip printo block iifname "$IFACE" tcp dport '{ 443, 853 }' reject with tcp reset || return 1
+  sudo nft add rule ip printo block iifname "$IFACE" udp dport 853 reject || return 1
+}
+
+ask_for_portal() {
+  ROOT_OK=0
+  printf '%s\n' "To let the page open by itself on a phone, your computer password is needed once."
+  if ! sudo -v; then
+    printf '%s\n' "Without that, the page can still be opened by typing the address."
+    return 0
+  fi
+  keep_sudo
+  install_dns "10.42.0.1"
+  ROOT_OK=1
+}
+
+prepare_portal() {
+  local ip="$1"
+  AUTO=0
+  ADDRESS="${ip}:${PORT}"
+  [[ "${ROOT_OK:-0}" == 1 ]] || return 0
+  if [[ "$ip" != "10.42.0.1" ]]; then
+    install_dns "$ip"
+    bounce_hotspot
+    ip="$(shop_address)"
+  fi
+  if ! wait_dns "$ip"; then
+    bounce_hotspot
+    ip="$(shop_address)"
+  fi
+  clear_old_redirect
+  if install_redirect; then
+    ADDRESS="$ip"
+    export PRINTO_PUBLIC_PORT=80
+    if wait_dns "$ip"; then AUTO=1; fi
+  fi
+}
+
+close_hotspot() {
+  if [[ -n "${SUDO_KEEP:-}" ]]; then kill "$SUDO_KEEP" >/dev/null 2>&1 || true; fi
+  if [[ -n "${IFACE:-}" ]]; then
+    sudo -n nft delete table ip printo >/dev/null 2>&1 || true
+    clear_old_redirect
+  fi
+  sudo -n rm -f /etc/NetworkManager/dnsmasq-shared.d/printo.conf >/dev/null 2>&1 || true
+  nmcli connection down printO >/dev/null 2>&1 || true
+  if [[ -n "${PREVIOUS:-}" ]]; then sleep 0.4; nmcli connection up "$PREVIOUS" >/dev/null 2>&1 || true; fi
+}

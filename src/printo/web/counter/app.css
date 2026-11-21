@@ -37,6 +37,8 @@ body { height: 100dvh; overflow: hidden; }
 .printer[data-state="missing"] .dot,
 .printer[data-state="down"] .dot { background: var(--bad); }
 
+.front { margin: 0; padding: 0 28px 12px; color: var(--ink-soft); font-size: 0.95rem; }
+
 .main { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
 
 .queue {

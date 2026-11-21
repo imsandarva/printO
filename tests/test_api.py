@@ -90,8 +90,8 @@ def test_phone_cannot_open_the_queue(tmp_path):
     with running(tmp_path, client_host="10.42.0.8") as (phone, _ctx, _cups):
         assert phone.get("/admin/jobs").status_code == 404
         assert phone.get("/admin/jobs/abcdef/file").status_code == 404
-        opened = phone.get("/docs")
-        assert opened.status_code == 200 and "text/html" in opened.headers["content-type"]
+        opened = phone.get("/docs", follow_redirects=False)
+        assert opened.status_code == 302 and opened.headers["location"].endswith("/")
         uploaded = _upload(phone, "a.jpg", jpeg_bytes())
         assert uploaded.status_code == 201
 

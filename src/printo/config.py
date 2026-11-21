@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -60,6 +61,9 @@ class Settings:
     soffice_bin: str
     log_max_bytes: int
     log_backups: int
+    # When the shop wifi sends port 80 here, a phone is given that port,
+    # not the port this process actually bound.
+    public_port: int | None
     check_only: bool
 
 
@@ -89,6 +93,7 @@ def default_settings(data_dir: Path | None = None) -> Settings:
         soffice_bin="soffice",
         log_max_bytes=1_000_000,
         log_backups=3,
+        public_port=None,
         check_only=False,
     )
 
@@ -98,7 +103,20 @@ def load_settings(argv: list[str] | None = None) -> Settings:
     check_only = _check_flag(args)
     loaded = _overlay(default_settings(), _toml_values(Path("printo.toml")), os.environ)
     sane = _require_sane(loaded)
-    return replace(sane, check_only=check_only)
+    return replace(sane, check_only=check_only, public_port=_public_port(os.environ))
+
+
+def _public_port(env: Mapping[str, str]) -> int | None:
+    raw = env.get("PRINTO_PUBLIC_PORT", "").strip()
+    if not raw:
+        return None
+    try:
+        port = int(raw)
+    except ValueError:
+        port = 0
+    if not 1 <= port <= 65535:
+        _bad("port")
+    return port
 
 
 def _check_flag(args: list[str]) -> bool:

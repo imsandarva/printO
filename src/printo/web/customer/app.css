@@ -115,6 +115,10 @@
 
 .note { color: var(--bad); max-width: 36ch; }
 
+.where { margin: 8px 0 0; font-size: 0.95rem; max-width: 36ch; }
+
+.where strong { color: var(--ink); font-weight: 600; }
+
 .noscript {
   margin: 24px;
   color: var(--ink-soft);

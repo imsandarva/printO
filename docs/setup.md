@@ -15,19 +15,21 @@ python3 -m venv .venv
 
 ## Open the shop
 
-From this folder, two commands. The first stays running: it starts the shop wifi and printO. A phone joins that wifi and sends a file. Closing it turns the shop wifi off and tries to put the previous wifi back.
+From this folder, one command. It stays in that window: it starts the shop wifi, printO, and the counter. A phone joins that wifi and the page opens when the phone allows it. Press Ctrl+C to close the shop. That turns the shop wifi off and tries to put the previous wifi back.
 
 ```bash
 ./scripts/start-shop
 ```
 
-The second only opens the counter on this computer. It does not start another copy of printO.
+Your computer password is asked once, so a phone can be sent to the page by itself. Without it, the address to type is `http://10.42.0.1:8088`.
+
+If the counter window was closed, this only opens it again. It does not start another copy.
 
 ```bash
 ./scripts/open-counter
 ```
 
-The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). Write them where customers can see them. Letting the page open by itself needs your password once, so phones can use port 80. Without that, the address is `http://10.42.0.1:8088`.
+The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown on the counter. Write them where customers can see them too. Joining by typing the password and joining with a code are the same: the page does not depend on which one was used.
 
 `.venv/bin/printo` still starts the server alone, without touching wifi.
 
@@ -41,6 +43,7 @@ A `printo.toml` in the working directory overrides the defaults. Environment var
 | --- | --- | --- |
 | `PRINTO_HOST` | `0.0.0.0` | Bind address |
 | `PRINTO_PORT` | `8088` | Port |
+| `PRINTO_PUBLIC_PORT` | the port above | Port a phone is sent to. `start-shop` sets this to 80 |
 | `PRINTO_DATA_DIR` | `./data` | Queue and files |
 | `PRINTO_PRINTER` | `MF3010` | CUPS queue name |
 | `PRINTO_MAX_UPLOAD_BYTES` | 67108864 | Largest upload |

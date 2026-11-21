@@ -8,6 +8,8 @@ let pending = null;
 let sending = false;
 
 function boot() {
+  const where = document.getElementById("where");
+  if (where) where.textContent = location.host;
   watchDrops();
   showIdle();
 }
