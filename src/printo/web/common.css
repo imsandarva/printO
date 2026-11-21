@@ -1,0 +1,111 @@
+/* Shared look. Both screens are the same shop: warm paper, ink, one copper accent. */
+
+:root {
+  color-scheme: light;
+  --paper: #f3efe6;
+  --paper-deep: #e6dfd3;
+  --card: #fbf8f2;
+  --ink: #1a1714;
+  --ink-soft: #6b635a;
+  --line: rgba(26, 23, 20, 0.1);
+  --accent: #b85a2a;
+  --accent-deep: #8d3f18;
+  --good: #1f6b45;
+  --warn: #8a5a12;
+  --bad: #8e3328;
+  --shadow: 0 1px 0 rgba(255, 252, 247, 0.8) inset, 0 18px 40px rgba(70, 48, 24, 0.08), 0 2px 6px rgba(70, 48, 24, 0.04);
+  --sans: "Ubuntu", "Cantarell", "Segoe UI", system-ui, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif", "Liberation Serif", Georgia, serif;
+}
+
+* { box-sizing: border-box; }
+
+html { font-size: 16px; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(1100px 640px at -10% -20%, rgba(184, 90, 42, 0.08), transparent 58%),
+    radial-gradient(900px 540px at 112% -8%, rgba(47, 111, 78, 0.06), transparent 52%);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button, input { font: inherit; color: inherit; }
+
+button { cursor: pointer; }
+
+:focus { outline: none; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+::selection { background: rgba(184, 90, 42, 0.18); }
+
+h1, h2, p { margin: 0; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 650;
+  font-size: 0.95rem;
+  letter-spacing: -0.02em;
+}
+
+.brand i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(184, 90, 42, 0.12);
+}
+
+.quiet { color: var(--ink-soft); }
+
+.go {
+  appearance: none;
+  border: 0;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 22px;
+  border-radius: 16px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  box-shadow: 0 12px 28px rgba(26, 23, 20, 0.16);
+  transition: transform 0.18s ease, background 0.18s ease;
+  touch-action: manipulation;
+}
+
+.go:hover { background: #2c2722; }
+
+.go:active { transform: scale(0.985); }
+
+.go:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+.texty {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 8px 2px;
+  color: var(--ink-soft);
+  font-weight: 550;
+  touch-action: manipulation;
+}
+
+.texty:hover { color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

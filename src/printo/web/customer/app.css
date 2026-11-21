@@ -1,0 +1,131 @@
+/* The phone page. One job: choose a file, send it, show the number. */
+
+.sheet {
+  width: min(28rem, 100%);
+  margin: 0 auto;
+  min-height: 100dvh;
+  padding: calc(28px + env(safe-area-inset-top)) 24px calc(40px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px 0 12px;
+}
+
+.stage h1 {
+  font-size: 2.35rem;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.stage > * { animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1); }
+
+.pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 22px 22px 20px;
+  border-radius: 20px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pick strong { font-size: 1.15rem; font-weight: 650; letter-spacing: -0.02em; }
+
+.pick:hover { transform: translateY(-1px); box-shadow: 0 22px 44px rgba(70, 48, 24, 0.1); }
+
+.pick:active { transform: scale(0.99); }
+
+.pick.over { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.drop-hint { display: none; }
+
+@media (hover: hover) { .drop-hint { display: block; } }
+
+.file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  height: 3px;
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 99px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.track span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.track.busy span { width: 36%; animation: slide 1.1s ease-in-out infinite; }
+
+.eyebrow {
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-deep);
+}
+
+.ticket {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: clamp(4.6rem, 22vw, 6rem);
+  line-height: 0.88;
+  letter-spacing: 0.06em;
+  margin: 4px 0 6px;
+}
+
+.actions { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 8px; }
+
+.note { color: var(--bad); max-width: 36ch; }
+
+.noscript {
+  margin: 24px;
+  color: var(--ink-soft);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes slide {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}

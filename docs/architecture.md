@@ -1,8 +1,8 @@
 # Architecture
 
-printO is one Python process on the shop laptop. Phones on the shop wifi upload a file. The laptop turns that file into a single PDF, and the person at the counter chooses pages and copies and sends it to the printer already set up in CUPS. Nothing here manages wifi, and there is no screen yet.
+printO is one Python process on the shop laptop. Phones on the shop wifi open a page and send a file. The laptop turns that file into a single PDF. The person at the counter opens their own page, on this computer only, chooses pages and copies, and sends it to the printer already set up in CUPS. Nothing here manages wifi.
 
-Citizenship copies, double-sided books, and the counter screen are intentionally not in this version.
+Citizenship copies and double-sided books are intentionally not in this version.
 
 ## Pieces
 
@@ -11,6 +11,7 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | Piece | What it owns |
 | --- | --- |
 | HTTP | `POST /upload` for phones. `/admin/...` for the laptop only. |
+| Screens | The phone page and the counter. Plain files served by this process, so there is no second program and no build step to keep in memory. |
 | Ingest | Writes the upload to a temporary name, fsyncs it, then renames it into the job folder, then records the job. |
 | Store | One SQLite table for state. The file bytes stay on disk. |
 | Converter | One worker. PDF is checked and copied. Photos become an A4 PDF. Word goes through LibreOffice, then that process exits. |
@@ -38,7 +39,7 @@ Two clicks cannot both print the same file: the status change happens in one SQL
 
 ## Who can see what
 
-The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page, because that would describe the admin routes to every phone on the wifi. Customers get back a short number and nothing else: no list, no download, no other people's files.
+The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page. Any other address on this port is the send page, so a phone checking whether the wifi has internet still lands there. Customers get back a short number and nothing else: no list, no download, no other people's files. The counter page is under `/admin`, so a phone cannot open it.
 
 ## Power cuts and disk
 
@@ -54,4 +55,6 @@ If the queue says the printer is off or unplugged, the file is not submitted. Se
 
 ## What starts when
 
-At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter screen is not started here. It will be opened by hand later, against `http://127.0.0.1:8088`.
+At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter is not started here. Open it by hand with `scripts/open-counter`, which is a window onto `http://127.0.0.1:8088/admin/`.
+
+Until that boot setup exists, `scripts/start-shop` turns the hotspot on and runs this process. Closing that command turns the hotspot off and tries to restore the wifi this computer was using. The preview on the counter is grey because the MF3010 prints black and white.

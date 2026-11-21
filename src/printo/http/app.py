@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
 from printo.errors import UserError
-from printo.http import admin, customer
+from printo.http import admin, customer, pages
 from printo.http.guard import blocked
 from printo.http.respond import fail
 from printo.messages import hidden, try_again, unexpected, validation
@@ -36,6 +36,8 @@ def create_app(ctx: Context) -> FastAPI:
     app.add_exception_handler(Exception, _unexpected)
     app.include_router(customer.router)
     app.include_router(admin.router)
+    # The catch-all send page is in this router, so it has to come after the real routes.
+    app.include_router(pages.router)
     return app
 
 

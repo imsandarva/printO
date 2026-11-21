@@ -11,7 +11,25 @@ python3 -m venv .venv
 .venv/bin/printo
 ```
 
-`--check` prints one line about the printer and does not start the server. The server listens on port **8088** on all interfaces. Phones use that. The counter uses `http://127.0.0.1:8088`.
+`--check` prints one line about the printer and does not start the server. The server listens on port **8088** on all interfaces. Phones use that. The counter uses `http://127.0.0.1:8088/admin/`.
+
+## Open the shop
+
+From this folder, two commands. The first stays running: it starts the shop wifi and printO. A phone joins that wifi and sends a file. Closing it turns the shop wifi off and tries to put the previous wifi back.
+
+```bash
+./scripts/start-shop
+```
+
+The second only opens the counter on this computer. It does not start another copy of printO.
+
+```bash
+./scripts/open-counter
+```
+
+The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). Write them where customers can see them. Letting the page open by itself needs your password once, so phones can use port 80. Without that, the address is `http://10.42.0.1:8088`.
+
+`.venv/bin/printo` still starts the server alone, without touching wifi.
 
 Files, the database, the LibreOffice profile, and the log live in `./data` (or `PRINTO_DATA_DIR`). The log rotates at about 1 MB, three old files kept.
 
@@ -60,7 +78,7 @@ nmcli device wifi hotspot ssid Shop password "choose-a-password" ifname wlan0
 nmcli connection modify Hotspot connection.autoconnect yes
 ```
 
-Confirm the wifi device name on that laptop. After a reboot the hotspot should be up before anyone logs in; that is worth testing once on the real machine. Phones join that wifi and upload to `http://<laptop-hotspot-ip>:8088/upload`. The laptop's address on its own hotspot is often `10.42.0.1`.
+Confirm the wifi device name on that laptop. After a reboot the hotspot should be up before anyone logs in; that is worth testing once on the real machine. Phones join that wifi and open `http://10.42.0.1:8088`. The laptop's address on its own hotspot is often `10.42.0.1`. `scripts/start-shop` is the same hotspot for a machine that is not starting it at boot, and it does not leave autoconnect on.
 
 ## Fonts
 

@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# Shop wifi, then printO. Leave this running. Closing it turns the shop wifi off
+# and tries to put the previous wifi back, so this computer is not stuck as a hotspot.
+
+set -euo pipefail
+source "$(dirname "$0")/common.sh"
+ROOT="$(shop_root "$0")"
+PORT="$(shop_port "$ROOT")"
+cd "$ROOT"
+
+IFACE=""
+PREVIOUS=""
+STARTED=0
+STOPPED=0
+SUDO_KEEP=""
+
+finish() {
+  # Command substitutions are subshells and would otherwise run this while the shop is still up.
+  [[ "${BASH_SUBSHELL:-0}" == 0 ]] || return
+  if [[ "$STOPPED" == 1 || "$STARTED" != 1 ]]; then return; fi
+  STOPPED=1
+  if [[ -n "$IFACE" ]]; then
+    sudo -n iptables -t nat -D PREROUTING -i "$IFACE" -p tcp --dport 80 -j REDIRECT --to-ports "$PORT" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$SUDO_KEEP" ]]; then kill "$SUDO_KEEP" >/dev/null 2>&1 || true; fi
+  nmcli connection down printO >/dev/null 2>&1 || true
+  if [[ -n "$PREVIOUS" ]]; then sleep 0.4; nmcli connection up "$PREVIOUS" >/dev/null 2>&1 || true; fi
+  printf '%s\n' "The shop wifi is off."
+}
+trap finish EXIT
+
+wifi_iface() {
+  if [[ -n "${PRINTO_WIFI_IFACE:-}" ]]; then printf '%s\n' "$PRINTO_WIFI_IFACE"; return; fi
+  nmcli -t -f DEVICE,TYPE device | awk -F: '$2=="wifi" { print $1; exit }'
+}
+
+read_wifi() {
+  local file="$ROOT/data/wifi" line key val
+  mkdir -p "$ROOT/data"
+  if [[ ! -f "$file" ]]; then
+    printf 'ssid=printO\npassword=printo123\n' > "$file"
+    chmod 600 "$file"
+  fi
+  SSID="printO"
+  PASS="printo123"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    key="${line%%=*}"
+    val="${line#*=}"
+    case "$key" in
+      ssid) SSID="$val" ;;
+      password) PASS="$val" ;;
+    esac
+  done < "$file"
+  if [[ -z "$SSID" || ${#PASS} -lt 8 ]]; then
+    printf '%s\n' "The wifi name or password in data/wifi isn't usable. The password needs at least 8 characters."
+    exit 1
+  fi
+}
+
+remember_previous() {
+  PREVIOUS="$(nmcli -t -f NAME,TYPE,DEVICE connection show --active | python3 -c '
+import sys
+iface = sys.argv[1]
+for line in sys.stdin:
+    parts = line.rstrip("\n").split(":")
+    if len(parts) < 3: continue
+    device, kind, name = parts[-1], parts[-2], ":".join(parts[:-2])
+    if kind == "802-11-wireless" and device == iface and name != "printO":
+        print(name)
+        break
+' "$IFACE")"
+}
+
+have_hotspot() {
+  nmcli -t -f NAME connection show | grep -Fxq 'printO'
+}
+
+port_open() {
+  python3 - "$PORT" << 'PY'
+import socket, sys
+port = int(sys.argv[1])
+try:
+    socket.create_connection(("127.0.0.1", port), 0.4).close()
+except OSError:
+    sys.exit(1)
+PY
+}
+
+bring_hotspot() {
+  command -v nmcli >/dev/null || { printf '%s\n' "This computer can't share a wifi hotspot."; exit 1; }
+  IFACE="$(wifi_iface)"
+  [[ -n "$IFACE" ]] || { printf '%s\n' "This computer doesn't have a wifi device that can be a hotspot."; exit 1; }
+  nmcli radio wifi on >/dev/null
+  remember_previous
+  printf '%s\n' "This computer will leave its current wifi and become the shop hotspot."
+  printf '%s\n' "Leave this window open while the shop is open. Closing it turns that wifi off."
+  STARTED=1
+  if have_hotspot; then
+    nmcli connection modify printO connection.interface-name "$IFACE" 802-11-wireless.mode ap 802-11-wireless.ssid "$SSID" \
+      802-11-wireless.band bg 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "$PASS" \
+      ipv4.method shared ipv6.method disabled connection.autoconnect no
+    nmcli connection up printO
+  else
+    nmcli device wifi hotspot ifname "$IFACE" con-name printO ssid "$SSID" password "$PASS" band bg
+    nmcli connection modify printO ipv6.method disabled connection.autoconnect no
+  fi
+}
+
+gateway() {
+  local ip="" tries=0
+  while [[ "$tries" -lt 10 ]]; do
+    ip="$(nmcli -g IP4.ADDRESS device show "$IFACE" 2>/dev/null | head -n 1 | cut -d/ -f1 || true)"
+    if [[ -n "$ip" ]]; then printf '%s\n' "$ip"; return; fi
+    tries=$((tries + 1))
+    sleep 0.3
+  done
+  printf '%s\n' "10.42.0.1"
+}
+
+open_portal() {
+  local ip="$1" tmp=""
+  # Only the hotspot's own name server reads this file. The computer's own internet is left alone.
+  printf '%s\n' "To let the page open by itself on a phone, your computer password is needed once."
+  if ! sudo -v; then
+    printf '%s\n' "Phones can still open http://${ip}:${PORT}"
+    return 0
+  fi
+  # Refresh the password ticket so closing the shop later can remove the port rule without asking again.
+  ( while true; do sudo -n -v >/dev/null 2>&1 || exit 0; sleep 50; done ) >/dev/null 2>&1 &
+  SUDO_KEEP=$!
+  tmp="$(mktemp)"
+  printf 'address=/#/%s\n' "$ip" > "$tmp"
+  sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+  sudo cp "$tmp" /etc/NetworkManager/dnsmasq-shared.d/printo.conf
+  sudo chmod 644 /etc/NetworkManager/dnsmasq-shared.d/printo.conf
+  rm -f "$tmp"
+  nmcli connection up printO >/dev/null
+  if ! sudo iptables -t nat -C PREROUTING -i "$IFACE" -p tcp --dport 80 -j REDIRECT --to-ports "$PORT" 2>/dev/null; then
+    if ! sudo iptables -t nat -A PREROUTING -i "$IFACE" -p tcp --dport 80 -j REDIRECT --to-ports "$PORT"; then
+      printf '%s\n' "Phones can still open http://${ip}:${PORT}"
+      return 0
+    fi
+  fi
+  printf '%s\n' "After a phone joins, the page should open by itself. If it doesn't, type ${ip} in the browser."
+}
+
+read_wifi
+PY="$ROOT/.venv/bin/printo"
+if [[ ! -x "$PY" ]]; then
+  printf '%s\n' "printO isn't installed in this folder yet. From here, run: python3 -m venv .venv && .venv/bin/pip install -e ."
+  exit 1
+fi
+bring_hotspot
+IP="$(gateway)"
+open_portal "$IP"
+printf '%s\n' "Wifi: ${SSID}"
+printf '%s\n' "Password: ${PASS}"
+printf '%s\n' "Write those where a customer can see them."
+if port_open; then
+  STARTED=0
+  printf '%s\n' "printO is already running. Open the counter with ./scripts/open-counter"
+  exit 0
+fi
+printf '%s\n' "The counter, on this computer: ./scripts/open-counter"
+"$PY"
