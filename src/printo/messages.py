@@ -179,12 +179,70 @@ def running() -> str:
 def front_desk(name: str, password: str, address: str) -> str:
     line = f"Customers join {name}. The password is {password}."
     if address:
-        line += f" If the page doesn't open on its own, they can type {address}."
+        line += f" Then they open {address}."
     return line
 
 
 def connected() -> str:
     return "Connected."
+
+
+def customer_copy() -> dict[str, str]:
+    """Every sentence on the customer page. The page fills {name}, {count}, {files}, {size}, {pct}, {done}, {total}, {current}."""
+    return {
+        "connected_shop": "Connected to shop",
+        "connected_named": "Connected to {name}",
+        "offline_short": "Not connected",
+        "offline": "Connection interrupted. Check your Wi-Fi and try again.",
+        "heading": "What would you like to print?",
+        "support": "Select documents or photos from your phone.",
+        "choose": "Choose files",
+        "types": "PDF, Word, and photos",
+        "selected": "Selected files",
+        "count_one": "1 file",
+        "count_many": "{count} files",
+        "tally": "{files} · {size}",
+        "add": "Add more files",
+        "remove_all": "Remove all",
+        "remove": "Remove {name}",
+        "view": "View {name}",
+        "undo": "Undo",
+        "removed_one": "Removed {name}",
+        "removed_all": "Removed all files",
+        "confirm_title": "Remove all files?",
+        "confirm_body": "This clears everything you've selected.",
+        "cancel": "Cancel",
+        "send": "Send to shop",
+        "sending": "Sending your files...",
+        "keep_open": "Keep this page open while your files are being sent.",
+        "waiting": "Waiting",
+        "uploading": "Uploading",
+        "uploading_pct": "Uploading · {pct}%",
+        "received_word": "Received",
+        "failed_word": "Failed",
+        "retry": "Try again",
+        "received_title": "Files received!",
+        "received_body": "Your files have been successfully sent to the shop.",
+        "collect": "You can now collect your printouts from the shopkeeper.",
+        "partial": "{done} of {total} files received",
+        "none_received": "These files weren't received.",
+        "partial_help": "You can send the rest again.",
+        "try_again_send": "You can try again.",
+        "send_more": "Send more files",
+        "unsupported": "This file type isn't supported.",
+        "too_large": "This file is too large to send.",
+        "empty": "That file is empty. Please choose the file again.",
+        "duplicate": "Already selected.",
+        "preview_fail": "Unable to preview this document.",
+        "still_send": "This file is selected and can still be sent.",
+        "close": "Close",
+        "page": "{current} of {total}",
+        "zoom_in": "Zoom in",
+        "zoom_out": "Zoom out",
+        "try_again": "Please try that again in a moment.",
+        "opening": "Opening…",
+        "noscript": "This page can't run in this browser. Please try a different one.",
+    }
 
 
 def present(job: Job) -> dict:

@@ -1,12 +1,20 @@
-"""The only thing a phone can do: hand over one file."""
+"""What a phone can do: see which shop it reached, and hand over one file at a time."""
 
 from fastapi import APIRouter, File, Request, UploadFile
 
+from printo.desk import shop_name
 from printo.http.guard import host_of
 from printo.http.respond import succeed
 from printo.messages import received
 
 router = APIRouter()
+
+
+@router.get("/shop")
+def shop(request: Request) -> object:
+    settings = request.app.state.ctx.settings
+    # Name only. The password stays on the counter.
+    return succeed({"name": shop_name(settings.data_dir), "max_bytes": settings.max_upload_bytes})
 
 
 @router.post("/upload")

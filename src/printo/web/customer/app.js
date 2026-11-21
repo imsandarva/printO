@@ -1,140 +1,174 @@
-/* The phone only sends one file and reads a number back. It never sees anyone else's files. */
+/* Wires the customer page. The pieces beside this file do the work. */
 
-const ACCEPT = ".pdf,.doc,.docx,.odt,.rtf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.heic,.heif,image/*,application/pdf";
-const EMPTY = "That file is empty. Please choose the file again.";
-const AGAIN = "Please try that again in a moment.";
+import { watchShop } from "./connect.js";
+import { filesLabel, fill } from "./format.js";
+import { createView } from "./render.js";
+import { addItems, counts, createSession, keyOf, putBack, releaseItem, resetSession, sendable, syncPhase, takeAll, takeOut } from "./session.js";
+import { assess } from "./sniff.js";
+import { requestThumb } from "./thumbs.js";
+import { uploadPool } from "./transfer.js";
+import { openViewer } from "./viewer.js";
 
-let pending = null;
-let sending = false;
+const boot = JSON.parse(document.getElementById("boot").textContent);
+const session = createSession(boot);
+const view = createView({
+  onChoose: () => openPicker(),
+  onAdd: () => openPicker(),
+  onClear: () => askClear(),
+  onUndo: () => undo(),
+  onSend: () => transmit(sendable(session)),
+  onMore: () => startOver(),
+  onRemove: (id) => removeOne(id),
+  onRetry: (id) => retryOne(id),
+  onPreview: (id) => preview(id),
+});
 
-function boot() {
-  const where = document.getElementById("where");
-  if (where) where.textContent = location.host;
-  watchDrops();
-  showIdle();
+bootPage();
+
+function bootPage() {
+  const picker = document.getElementById("picker");
+  picker.addEventListener("change", () => { const files = picker.files; if (files && files.length) take(files); picker.value = ""; });
+  watchDrop();
+  window.addEventListener("beforeunload", (event) => { if (!session.sending) return; event.preventDefault(); event.returnValue = ""; });
+  view.prepare(session.copy);
+  syncPhase(session);
+  view.paint(session);
+  watchShop((online, name) => { session.online = online; if (online && name) session.shopName = name; view.paint(session); });
 }
 
-function watchDrops() {
-  document.addEventListener("dragover", (event) => event.preventDefault());
-  document.addEventListener("drop", (event) => {
-    event.preventDefault();
-    const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-    if (file) choose(file);
+function openPicker() {
+  if (session.sending) return;
+  document.getElementById("picker").click();
+}
+
+let chain = Promise.resolve();
+
+function take(fileList) {
+  const files = [...fileList];
+  chain = chain.then(() => ingest(files)).catch(() => {});
+}
+
+async function ingest(files) {
+  if (session.sending || !files.length) return;
+  if (session.phase === "done") startOver(false);
+  const rows = [];
+  for (const file of files) rows.push({ file, key: keyOf(file), ...(await assess(file, session.maxBytes)) });
+  const result = addItems(session, rows);
+  syncPhase(session);
+  if (result.duplicate) view.flashNote(session.copy.duplicate);
+  view.paint(session);
+  for (const item of result.added) if (item.ok && (item.kind === "image" || item.kind === "pdf")) requestThumb(item, () => view.patch(item, session));
+  const kept = result.added.filter((item) => item.ok);
+  if (kept.length) view.announce(filesLabel(session.copy, counts(session).count));
+  else if (result.added[0]) view.announce(result.added[0].error);
+}
+
+function removeOne(id) {
+  if (session.sending) return;
+  const item = session.items.find((entry) => entry.id === id);
+  if (!item || item.status === "received") return;
+  const entry = takeOut(session, id);
+  if (!entry) return;
+  hold([entry], fill(session.copy.removed_one, { name: entry.item.name }));
+  syncPhase(session);
+  view.paint(session);
+}
+
+function askClear() {
+  if (session.sending || !session.items.length || session.items.some((item) => item.status === "received")) return;
+  view.confirm(session.copy, () => {
+    hold(takeAll(session), session.copy.removed_all);
+    syncPhase(session);
+    view.paint(session);
+    view.announce(session.copy.removed_all);
   });
 }
 
-function choose(file) {
-  if (sending) return;
-  if (!file || file.size === 0) { showError(EMPTY); return; }
-  pending = file;
-  showChosen(file);
+function hold(entries, label) {
+  commitUndo();
+  session.undo = { entries };
+  view.showToast(label);
+  session.timer = setTimeout(commitUndo, 5000);
 }
 
-function send() {
-  if (sending || !pending) return;
-  const file = pending;
-  sending = true;
-  showSending(file);
-  const body = new FormData();
-  body.append("file", file, file.name);
-  const xhr = new XMLHttpRequest();
-  xhr.open("POST", "/upload");
-  xhr.upload.addEventListener("progress", (event) => setProgress(event.lengthComputable ? event.loaded / event.total : null));
-  xhr.addEventListener("load", () => finish(xhr));
-  xhr.addEventListener("error", () => fail(AGAIN));
-  xhr.addEventListener("abort", () => fail(AGAIN));
-  xhr.send(body);
+function undo() {
+  if (!session.undo) return;
+  clearTimeout(session.timer);
+  const entries = session.undo.entries;
+  session.undo = null;
+  putBack(session, entries);
+  view.hideToast();
+  syncPhase(session);
+  view.paint(session);
 }
 
-function finish(xhr) {
-  const body = read(xhr);
-  sending = false;
-  if (xhr.status >= 200 && xhr.status < 300 && body.ok && body.number) { showDone(body.number, body.message || ""); return; }
-  fail(body.message || AGAIN);
+function commitUndo() {
+  clearTimeout(session.timer);
+  const entries = session.undo ? session.undo.entries : [];
+  session.undo = null;
+  for (const entry of entries) releaseItem(entry.item);
+  view.hideToast();
 }
 
-function fail(message) {
-  sending = false;
-  pending = null;
-  showError(message);
+function startOver(paint = true) {
+  commitUndo();
+  for (const item of session.items) releaseItem(item);
+  resetSession(session);
+  syncPhase(session);
+  if (paint) view.paint(session);
 }
 
-function read(xhr) {
-  try { return JSON.parse(xhr.responseText || "{}"); }
-  catch { return {}; }
+function preview(id) {
+  const item = session.items.find((entry) => entry.id === id);
+  if (item) openViewer(item, session);
 }
 
-function showIdle() {
-  const input = document.createElement("input");
-  input.className = "file";
-  input.type = "file";
-  input.accept = ACCEPT;
-  input.addEventListener("change", () => { const file = input.files && input.files[0]; if (file) choose(file); });
-  const pick = el("label", { class: "pick" });
-  pick.append(input, el("strong", { text: "Choose a file" }), el("span", { class: "quiet drop-hint", text: "You can also drop one here." }));
-  pick.addEventListener("dragover", () => pick.classList.add("over"));
-  pick.addEventListener("dragleave", () => pick.classList.remove("over"));
-  mount([heading("Send a file"), el("p", { class: "quiet", text: "PDF, Word, or a photo. It goes straight to the counter." }), pick]);
+function retryOne(id) {
+  const item = session.items.find((entry) => entry.id === id);
+  if (item && item.status === "failed") transmit([item]);
 }
 
-function showChosen(file) {
-  const actions = el("div", { class: "actions" });
-  actions.append(el("button", { class: "go", text: "Send it", on: { click: send } }), el("button", { class: "texty", text: "Choose a different file", on: { click: showIdle } }));
-  mount([heading("Ready to send"), el("p", { class: "name", text: file.name }), el("p", { class: "quiet", text: sizeOf(file.size) }), actions]);
+async function transmit(batch) {
+  if (session.sending || !session.online || !batch.length) return;
+  session.sending = true;
+  for (const item of batch) { item.status = "waiting"; item.loaded = 0; item.computable = false; item.error = ""; }
+  syncPhase(session);
+  view.paint(session);
+  view.announce(session.copy.sending);
+  const frames = new Map();
+  await uploadPool(batch, {
+    start(item) { item.status = "uploading"; view.patch(item, session); },
+    progress(item, computable, loaded, total) {
+      item.computable = computable;
+      item.loaded = loaded;
+      item.total = total || item.file.size;
+      if (frames.has(item.id)) return;
+      frames.set(item.id, requestAnimationFrame(() => { frames.delete(item.id); view.patch(item, session); }));
+    },
+    done(item, result) {
+      if (result.ok) { item.status = "received"; item.loaded = item.file.size; }
+      else { item.status = "failed"; item.error = result.offline ? session.copy.offline : (result.message || session.copy.try_again); }
+      view.patch(item, session);
+      const tally = counts(session);
+      view.announce(fill(session.copy.partial, { done: tally.received, total: tally.count }));
+    },
+  });
+  session.sending = false;
+  syncPhase(session);
+  view.paint(session);
+  if (session.phase === "done") view.announce(session.copy.received_title + " " + session.copy.received_body);
 }
 
-function showSending(file) {
-  const track = el("div", { class: "track busy", attrs: { id: "track" } });
-  track.append(el("span", { attrs: { id: "bar" } }));
-  mount([heading("Sending…"), el("p", { class: "name", text: file.name }), track]);
+function watchDrop() {
+  let depth = 0;
+  document.addEventListener("dragenter", (event) => { if (!event.dataTransfer) return; event.preventDefault(); depth += 1; document.body.classList.add("dropping"); });
+  document.addEventListener("dragover", (event) => event.preventDefault());
+  document.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth) document.body.classList.remove("dropping"); });
+  document.addEventListener("drop", (event) => {
+    event.preventDefault();
+    depth = 0;
+    document.body.classList.remove("dropping");
+    const files = event.dataTransfer && event.dataTransfer.files;
+    if (files && files.length) take(files);
+  });
 }
-
-function setProgress(ratio) {
-  const bar = document.getElementById("bar");
-  const track = document.getElementById("track");
-  if (!bar || !track || ratio == null) return;
-  track.classList.remove("busy");
-  bar.style.width = Math.max(4, Math.round(ratio * 100)) + "%";
-}
-
-function showDone(number, message) {
-  const actions = el("div", { class: "actions" });
-  actions.append(el("button", { class: "texty", text: "Send another", on: { click: () => { pending = null; showIdle(); } } }));
-  mount([el("p", { class: "eyebrow", text: "Tell them this number" }), heading(number, "ticket"), el("p", { class: "quiet", text: message }), actions]);
-}
-
-function showError(message) {
-  const actions = el("div", { class: "actions" });
-  actions.append(el("button", { class: "go", text: "Try again", on: { click: showIdle } }));
-  mount([heading("That didn't go through"), el("p", { class: "note", text: message }), actions]);
-}
-
-function mount(nodes) {
-  const stage = document.getElementById("stage");
-  stage.replaceChildren();
-  for (const node of nodes) stage.append(node);
-}
-
-function heading(text, className) {
-  return el("h1", { class: className || "", text: text });
-}
-
-function sizeOf(bytes) {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + " KB";
-  const mb = bytes / (1024 * 1024);
-  return (mb >= 10 ? String(Math.round(mb)) : mb.toFixed(1)) + " MB";
-}
-
-function el(tag, props) {
-  const node = document.createElement(tag);
-  const options = props || {};
-  if (options.class) node.className = options.class;
-  if (options.text != null) node.textContent = options.text;
-  if (options.attrs) for (const [key, value] of Object.entries(options.attrs)) node.setAttribute(key, value);
-  if (options.on) for (const [key, fn] of Object.entries(options.on)) node.addEventListener(key, fn);
-  if (tag === "button") node.type = "button";
-  return node;
-}
-
-boot();

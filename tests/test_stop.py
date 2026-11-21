@@ -12,7 +12,7 @@ from pathlib import Path
 def test_ctrl_c_closes_the_shop_while_a_phone_is_connected(tmp_path):
     port = _free_port()
     env = os.environ.copy()
-    env.update(PRINTO_PORT=str(port), PRINTO_DATA_DIR=str(tmp_path / "data"), PRINTO_PUBLIC_PORT="80", PYTHONUNBUFFERED="1")
+    env.update(PRINTO_PORT=str(port), PRINTO_DATA_DIR=str(tmp_path / "data"), PYTHONUNBUFFERED="1")
     err = tmp_path / "err"
     proc = subprocess.Popen(
         [sys.executable, "-m", "printo"], cwd=tmp_path, env=env,

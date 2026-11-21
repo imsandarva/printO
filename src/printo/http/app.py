@@ -36,7 +36,7 @@ def create_app(ctx: Context) -> FastAPI:
     app.add_exception_handler(Exception, _unexpected)
     app.include_router(customer.router)
     app.include_router(admin.router)
-    # The catch-all send page is in this router, so it has to come after the real routes.
+    # /admin the page lives here, so this comes after the admin API.
     app.include_router(pages.router)
     return app
 

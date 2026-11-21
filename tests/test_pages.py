@@ -8,14 +8,19 @@ def test_phone_sees_the_send_page_and_not_the_counter(tmp_path):
         page = phone.get("/")
         assert page.status_code == 200 and "text/html" in page.headers["content-type"]
         assert "/admin" not in page.text
+        assert "What would you like to print?" in page.text
+        assert "Choose files" in page.text
         assert phone.get("/c/customer.js").status_code == 200
-        assert "Choose a file" in phone.get("/c/customer.js").text
-        assert "open your browser" in page.text
+        assert phone.get("/c/transfer.js").status_code == 200
+        assert "/upload" in phone.get("/c/transfer.js").text
+        assert phone.get("/c/pdf.min.mjs").status_code == 200
+        assert phone.get("/c/../common.css").status_code == 404
+        assert "open your browser" not in page.text
         probe = phone.get("/hotspot-detect.html", follow_redirects=False)
-        assert probe.status_code == 302 and probe.headers["location"].endswith("/")
-        assert "hotspot-detect" not in probe.headers["location"]
+        assert probe.status_code == 404 and probe.headers.get("location") is None
+        assert "isn't available" in probe.json()["message"]
         again = phone.get("/generate_204", follow_redirects=False)
-        assert again.status_code == 302 and again.headers["cache-control"] == "no-store"
+        assert again.status_code == 404 and again.headers.get("location") is None
         for path in ("/admin", "/admin/", "/admin/c/counter.js", "/admin/jobs"):
             denied = phone.get(path)
             assert denied.status_code == 404 and "isn't available" in denied.json()["message"]

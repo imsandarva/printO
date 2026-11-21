@@ -2,9 +2,9 @@
 
 ## At the counter
 
-The customer joins the shop wifi, whether they type the password or scan a code. The name and password are on the counter and in `data/wifi` (created the first time the shop starts), and should also be written where they can see them. The page opens by itself when the phone allows it. If it does not, they type the address on the counter, usually `10.42.0.1`. If the small window that opens will not let them choose a file, they open their own browser and type that same address.
+The customer joins the shop wifi. The name and password are on the counter, in the window where the shop was started, and in `data/wifi` (created the first time the shop starts). They scan the code in that window, or type the address under it, usually `http://10.42.0.1:8088/`. The page opens in the phone's own browser.
 
-They choose one file and send it. The page shows a short number. They say that number out loud.
+They choose their files, check them, and send them. The page confirms when the shop computer has them. Printing still happens here.
 
 On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and press Ctrl+C to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there. The number matches. They choose pages and how many copies, then press Print. The page is shown in grey because the printer is black and white.
 
@@ -12,9 +12,17 @@ Try again prepares a file that failed. Print again sends one that already went, 
 
 The words on both screens are the sentences from the server.
 
+## A customer sends files
+
+The page is one screen. They can choose several files, add more, and remove a mistake (Undo brings it back; Remove all asks first). Photos and the first page of a PDF are previewed on the phone. Tapping a file opens it there.
+
+Send moves the files together, a few at a time. Each row says whether it is waiting, sending, received, or failed. The shop has a file when that file's upload answers. That is receipt, not printing. If one fails, the others stay received, and Try again sends only the ones that didn't arrive.
+
+`GET /shop` tells the phone the shop name and the largest file it will take. It does not include the wifi password.
+
 ## A customer hands over a file
 
-`POST /upload` with one form field, `file`.
+`POST /upload` with one form field, `file`. The page calls this once per file.
 
 Accepted: PDF, Word (`.doc`, `.docx`), OpenDocument text, Rich Text, and photos (JPEG, PNG, WEBP, GIF, BMP, TIFF, HEIC). The type is read from the bytes, not from the filename. GIF uses the first frame only, so an animation is not printed as a stack of frames.
 

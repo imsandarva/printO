@@ -3,19 +3,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f3efe6">
-  <title>Send a file</title>
+  <meta name="theme-color" content="#f7f5f2">
+  <title>printO</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/c/common.css">
   <link rel="stylesheet" href="/c/customer.css">
 </head>
 <body>
-  <main class="sheet">
-    <header class="brand"><i aria-hidden="true"></i><span>printO</span></header>
-    <div class="stage" id="stage" aria-live="polite"></div>
-    <p class="quiet where">If choosing a file doesn't work in this window, open your browser and go to <strong id="where"></strong>.</p>
-  </main>
-  <noscript><p class="noscript">This page can't run in this browser. Please try a different one.</p></noscript>
-  <script src="/c/customer.js"></script>
+  <div class="page">
+    <header class="top">
+      <div class="brand"><img src="/favicon.svg" alt="" width="22" height="22"><span>printO</span></div>
+      <p class="link" id="link"><i class="dot" aria-hidden="true"></i><span id="link-text">__LINK__</span></p>
+    </header>
+    <p class="banner" id="banner" hidden></p>
+    <main id="main">
+      <section id="empty">
+        <h1 id="heading">__HEADING__</h1>
+        <p class="support">__SUPPORT__</p>
+        <button class="primary" id="choose" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+          <span>__CHOOSE__</span>
+        </button>
+        <p class="types">__TYPES__</p>
+      </section>
+      <section id="files" hidden>
+        <div class="list-head" id="list-head">
+          <div>
+            <h2 id="selected-label"></h2>
+            <p class="tally" id="tally"></p>
+          </div>
+          <button class="quiet" id="clear" type="button"></button>
+        </div>
+        <div class="phase" id="phase" hidden>
+          <div class="phase-row">
+            <h2 id="phase-title"></h2>
+            <span id="phase-pct"></span>
+          </div>
+          <p class="phase-help" id="phase-help"></p>
+        </div>
+        <p class="note" id="note" hidden></p>
+        <div id="list" role="list"></div>
+        <button class="add" id="add" type="button"></button>
+      </section>
+      <section id="done" hidden>
+        <svg class="seal" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="22"></circle>
+          <path pathLength="32" d="M15 24.5 21 30.5 33 17"></path>
+        </svg>
+        <h1 id="done-title"></h1>
+        <p class="lead" id="done-body"></p>
+        <p class="summary" id="done-summary"></p>
+        <p class="next" id="done-next"></p>
+        <button class="quiet more" id="more" type="button"></button>
+      </section>
+    </main>
+    <div class="dock" id="dock" hidden>
+      <div class="track" id="track" hidden role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="bar"></span></div>
+      <p class="keep" id="keep" hidden></p>
+      <button class="primary" id="send" type="button"></button>
+    </div>
+    <div class="toast" id="toast" hidden role="status"><span id="toast-text"></span><button id="undo" type="button"></button></div>
+  </div>
+  <p class="sr" id="live" aria-live="polite"></p>
+  <input id="picker" class="sr" type="file" multiple tabindex="-1" aria-hidden="true" accept=".pdf,.doc,.docx,.odt,.rtf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.heic,.heif,image/*,application/pdf">
+  <noscript><p class="noscript">__NOSCRIPT__</p></noscript>
+  <script id="boot" type="application/json">__BOOT__</script>
+  <script type="module" src="/c/customer.js"></script>
 </body>
 </html>

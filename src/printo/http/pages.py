@@ -1,16 +1,16 @@
-"""The two screens. Phones get the send page. The counter is only for the laptop, because it lives under /admin.
+"""The two screens. Phones get the send page. The counter is only for the laptop, because it lives under /admin."""
 
-A phone that just joined the wifi opens some other address first, to see if the internet is there.
-That address is sent to the send page. Answering it directly would tell the phone there is nothing to open.
-"""
-
+import json
+import re
+from html import escape
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from starlette.exceptions import HTTPException
 
-from printo.http.portal import to_portal
+from printo.desk import shop_name
+from printo.messages import customer_copy
 
 _ROOT = Path(__file__).resolve().parents[1] / "web"
 _PAGE = {
@@ -18,10 +18,13 @@ _PAGE = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": (
-        "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; "
-        "img-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'"
+        "default-src 'self'; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; "
+        "connect-src 'self'; img-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'"
     ),
 }
+# Customer scripts live beside the page. The name has to be a single safe segment so it cannot climb out of that folder.
+_MODULE = re.compile(r"^[A-Za-z0-9._-]+$")
+_MODULE_TYPES = {".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8"}
 _ASSET = {"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"}
 _PUBLIC = {
     "common.css": ("common.css", "text/css; charset=utf-8"),
@@ -38,8 +41,10 @@ router = APIRouter()
 
 
 @router.get("/")
-def customer_page() -> FileResponse:
-    return _html("customer/index.html")
+def customer_page(request: Request) -> HTMLResponse:
+    settings = request.app.state.ctx.settings
+    boot = {"name": shop_name(settings.data_dir), "max_bytes": settings.max_upload_bytes, "copy": customer_copy()}
+    return HTMLResponse(_customer_html(boot), headers=_PAGE)
 
 
 @router.get("/favicon.svg")
@@ -50,7 +55,12 @@ def icon() -> FileResponse:
 
 @router.get("/c/{name}")
 def customer_asset(name: str) -> FileResponse:
-    return _known(_PUBLIC, name)
+    if name in _PUBLIC:
+        return _known(_PUBLIC, name)
+    # Modules the page imports, including the local PDF viewer. Not a general file host.
+    if ".." not in name and _MODULE.fullmatch(name) and _MODULE_TYPES.get(Path(name).suffix):
+        return _file(f"customer/{name}", _MODULE_TYPES[Path(name).suffix], _ASSET)
+    raise HTTPException(404)
 
 
 @router.get("/admin")
@@ -64,13 +74,23 @@ def counter_asset(name: str) -> FileResponse:
     return _known(_COUNTER, name)
 
 
-@router.api_route("/{path:path}", methods=["GET", "HEAD"])
-def any_other_page(path: str, request: Request) -> RedirectResponse:
-    # Admin paths that are not a real route stay hidden. Everything else goes to the send page,
-    # including the addresses phones use to test a wifi network.
-    if path == "admin" or path.startswith("admin/"):
-        raise HTTPException(404)
-    return to_portal(request)
+def _customer_html(boot: dict) -> str:
+    copy = boot["copy"]
+    link = copy["connected_named"].replace("{name}", boot["name"]) if boot["name"] else copy["connected_shop"]
+    raw = (_ROOT / "customer" / "index.html").read_text(encoding="utf-8")
+    # Keep the boot JSON from being able to close the script tag.
+    payload = json.dumps(boot, ensure_ascii=False).replace("<", "\\u003c")
+    for key, value in {
+        "__LINK__": escape(link),
+        "__HEADING__": escape(copy["heading"]),
+        "__SUPPORT__": escape(copy["support"]),
+        "__CHOOSE__": escape(copy["choose"]),
+        "__TYPES__": escape(copy["types"]),
+        "__NOSCRIPT__": escape(copy["noscript"]),
+        "__BOOT__": payload,
+    }.items():
+        raw = raw.replace(key, value)
+    return raw
 
 
 def _html(rel: str) -> FileResponse:

@@ -5,6 +5,11 @@ from pathlib import Path
 from printo.messages import front_desk
 
 
+def shop_name(data_dir: Path) -> str:
+    """The wifi name customers already joined. Never the password."""
+    return _read(data_dir / "wifi").get("ssid", "").strip()
+
+
 def desk_message(data_dir: Path) -> str:
     found = _read(data_dir / "wifi")
     name = found.get("ssid", "").strip()

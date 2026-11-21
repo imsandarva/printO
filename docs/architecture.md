@@ -11,7 +11,7 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | Piece | What it owns |
 | --- | --- |
 | HTTP | `POST /upload` for phones. `/admin/...` for the laptop only. |
-| Screens | The phone page and the counter. Plain files served by this process, so there is no second program and no build step to keep in memory. |
+| Screens | The phone page and the counter. Plain files served by this process, so there is no second program and no build step to keep in memory. The phone page is one screen: choose, review, send, and see that the shop received the files. Previews are drawn on the phone. |
 | Ingest | Writes the upload to a temporary name, fsyncs it, then renames it into the job folder, then records the job. |
 | Store | One SQLite table for state. The file bytes stay on disk. |
 | Converter | One worker. PDF is checked and copied. Photos become an A4 PDF. Word goes through LibreOffice, then that process exits. |
@@ -39,15 +39,13 @@ Two clicks cannot both print the same file: the status change happens in one SQL
 
 ## Who can see what
 
-The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page. Any other address is sent to the send page. Customers get back a short number and nothing else: no list, no download, no other people's files. The counter page is under `/admin`, so a phone cannot open it.
+The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page. Any other address answers that the page isn't available. Customers get back a short number and nothing else: no list, no download, no other people's files. `GET /shop` returns the wifi name they already joined, and not the password. The counter page is under `/admin`, so a phone cannot open it. The number still identifies the file on the counter. The phone confirms receipt instead of asking the customer to read a number out.
 
-## Why the page opens on a phone
+## How a customer opens the page
 
-A phone that joins the wifi asks a known address, over plain HTTP, whether the internet is there. iPhones ask `captive.apple.com`. Android phones ask `connectivitycheck.gstatic.com`. Sending that check to our page is what makes the phone open it. The check runs the same way whether the password was typed or a code was scanned.
+The shop computer is the hotspot. It does not answer for other websites, and joining the wifi does not open a page on the phone. `scripts/start-shop` prints a code in that window, with the address under it, usually `http://10.42.0.1:8088/`. The customer joins the wifi, then scans the code or types the address. The phone's own browser opens the send page.
 
-The hotspot's name server answers every name with this computer, for IPv4 and for IPv6, straight away. Waiting on the internet, which this wifi does not have, is what makes a phone give up and show nothing. Port 80 on that wifi is handed to this process, and the check is sent to the send page. The address to type is the one printed when the shop started, usually `10.42.0.1`.
-
-Some phones show a sign-in notice instead of opening the page, and the small window they use sometimes cannot choose a file. The page and the counter both give the address to type in the phone's own browser.
+The code is drawn in black on white, two rows to a character, so a dark window can still be scanned and the squares stay about square. High error correction is used, because a photo of a screen loses a few squares. If the window is too narrow to draw it, the address is still printed. The wifi name and password are in that same window and on the counter.
 
 ## Power cuts and disk
 
@@ -63,7 +61,7 @@ If the queue says the printer is off or unplugged, the file is not submitted. Se
 
 ## What starts when
 
-`scripts/start-shop` is the shop. It turns this computer into the hotspot, starts this process in that same window, and opens the counter. Press Ctrl+C there to stop. That closes the page even if a phone still has it open, turns the hotspot off, and tries to put the previous wifi back.
+`scripts/start-shop` is the shop. It turns this computer into the hotspot, prints the customer code in that same window, starts this process, and opens the counter. Press Ctrl+C there to stop. That closes the page even if a phone still has it open, turns the hotspot off, and tries to put the previous wifi back.
 
 `scripts/open-counter` only opens the counter again, if that window was closed. It does not start a second copy.
 

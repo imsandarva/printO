@@ -15,13 +15,11 @@ python3 -m venv .venv
 
 ## Open the shop
 
-From this folder, one command. It stays in that window: it starts the shop wifi, printO, and the counter. A phone joins that wifi and the page opens when the phone allows it. Press Ctrl+C to close the shop. That turns the shop wifi off and tries to put the previous wifi back.
+From this folder, one command. It stays in that window: it starts the shop wifi, printO, and the counter, and it shows a code for the customer page. A phone joins that wifi, then scans the code or types the address under it. Press Ctrl+C to close the shop. That turns the shop wifi off and tries to put the previous wifi back.
 
 ```bash
 ./scripts/start-shop
 ```
-
-Your computer password is asked once, so a phone can be sent to the page by itself. Without it, the address to type is `http://10.42.0.1:8088`.
 
 If the counter window was closed, this only opens it again. It does not start another copy.
 
@@ -29,7 +27,7 @@ If the counter window was closed, this only opens it again. It does not start an
 ./scripts/open-counter
 ```
 
-The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown on the counter. Write them where customers can see them too. Joining by typing the password and joining with a code are the same: the page does not depend on which one was used.
+The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown on the counter and when the shop starts. Write them where customers can see them too. The address of the page is saved there as well, once the shop has started.
 
 `.venv/bin/printo` still starts the server alone, without touching wifi.
 
@@ -42,8 +40,7 @@ A `printo.toml` in the working directory overrides the defaults. Environment var
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PRINTO_HOST` | `0.0.0.0` | Bind address |
-| `PRINTO_PORT` | `8088` | Port |
-| `PRINTO_PUBLIC_PORT` | the port above | Port a phone is sent to. `start-shop` sets this to 80 |
+| `PRINTO_PORT` | `8088` | Port phones use, and the port in the address printed when the shop starts |
 | `PRINTO_DATA_DIR` | `./data` | Queue and files |
 | `PRINTO_PRINTER` | `MF3010` | CUPS queue name |
 | `PRINTO_MAX_UPLOAD_BYTES` | 67108864 | Largest upload |
