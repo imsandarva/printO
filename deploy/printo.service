@@ -1,0 +1,27 @@
+# Shop laptop: the server starts at boot, before anyone logs in.
+# Edit User, WorkingDirectory, ExecStart, and the data path, then:
+#   sudo cp deploy/printo.service /etc/systemd/system/printo.service
+#   sudo systemctl enable --now printo.service
+# The hotspot is a saved NetworkManager connection, not this service.
+
+[Unit]
+Description=printO print shop
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shop
+Group=shop
+WorkingDirectory=/opt/printo
+Environment=PYTHONUNBUFFERED=1
+Environment=PRINTO_DATA_DIR=/var/lib/printo
+Environment=PRINTO_PRINTER=MF3010
+ExecStart=/opt/printo/.venv/bin/printo
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=20
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

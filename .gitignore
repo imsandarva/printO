@@ -1,0 +1,13 @@
+zinfo.md
+rough_idea.md
+todo.md
+
+.venv/
+data/
+printo.toml
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+dist/
+build/
