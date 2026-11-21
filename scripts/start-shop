@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The shop, in this window. Ctrl+C closes the page and turns the shop wifi off.
+# The shop, in this window. Ctrl+C turns the shop wifi off.
 
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
@@ -16,13 +16,10 @@ PREVIOUS=""
 STARTED=0
 HOT=0
 STOPPED=0
-SUDO_KEEP=""
 GUIDE=""
 SSID=""
 PASS=""
-ROOT_OK=0
-AUTO=0
-ADDRESS=""
+OLD_PORTAL=0
 
 finish() {
   # A command substitution is a subshell, and it must not turn the wifi off while the shop is up.
@@ -48,6 +45,25 @@ open_when_ready() {
   done
 }
 
+page_url() {
+  local ip="$1" port="$2" url=""
+  url="$("$PYTHON" -c 'import sys; from printo.link import customer_url; sys.stdout.write(customer_url(sys.argv[1], int(sys.argv[2])))' "$ip" "$port" 2>/dev/null || true)"
+  if [[ -n "$url" ]]; then printf '%s\n' "$url"; return; fi
+  if [[ "$port" == "80" ]]; then printf '%s\n' "http://${ip}/"; return; fi
+  printf '%s\n' "http://${ip}:${port}/"
+}
+
+show_page() {
+  local url="$1"
+  printf '\n'
+  if "$PYTHON" -c 'import sys; from printo.link import show; raise SystemExit(0 if show(sys.argv[1]) else 1)' "$url"; then
+    printf '%s\n' "Join that wifi, then scan the code above to open the page."
+    printf '%s\n' "Or type this address: ${url}"
+  else
+    printf '%s\n' "Join that wifi, then open ${url}"
+  fi
+}
+
 read_wifi
 if [[ ! -x "$PY" ]]; then
   printf '%s\n' "printO isn't installed in this folder yet. From here, run: python3 -m venv .venv && .venv/bin/pip install -e ."
@@ -62,19 +78,16 @@ fi
 printf '%s\n' "This computer will leave its current wifi and become the shop hotspot."
 printf '%s\n' "Leave this window open while the shop is open. Press Ctrl+C to close it."
 STARTED=1
-ask_for_portal
 bring_hotspot
 IP="$(shop_address)"
-prepare_portal "$IP"
-note_address "$ADDRESS"
+URL="$(page_url "$IP" "$PORT")"
+note_address "$URL"
 printf '%s\n' "Wifi: ${SSID}"
 printf '%s\n' "Password: ${PASS}"
-printf '%s\n' "Write those where a customer can see them."
-if [[ "$AUTO" == 1 ]]; then
-  printf '%s\n' "After a phone joins, the page should open by itself. If it doesn't, type ${ADDRESS} in the browser."
-else
-  printf '%s\n' "On a phone, open http://${ADDRESS} in the browser."
+if [[ "$OLD_PORTAL" == 1 ]]; then
+  printf '%s\n' "A phone may still ask to sign in after joining the wifi. Dismiss that, then use the address below."
 fi
+show_page "$URL"
 
 open_when_ready &
 GUIDE=$!

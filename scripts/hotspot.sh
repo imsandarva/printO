@@ -1,5 +1,5 @@
 # The shop wifi. The Python process never touches this. Start-shop is the only caller.
-# It expects ROOT, PORT, and PYTHON, and it fills IFACE, PREVIOUS, STARTED, SUDO_KEEP, SSID, PASS.
+# It expects ROOT and PORT, and it fills IFACE, PREVIOUS, HOT, SSID, and PASS.
 
 wifi_iface() {
   if [[ -n "${PRINTO_WIFI_IFACE:-}" ]]; then printf '%s\n' "$PRINTO_WIFI_IFACE"; return; fi
@@ -68,10 +68,23 @@ shop_address() {
   printf '%s\n' "10.42.0.1"
 }
 
+# An older shop answered every website with this computer, so a phone would try to open a page by itself.
+# That is gone. A leftover of it would still make the phone ask to sign in, so it comes off before the hotspot starts.
+clear_old_portal() {
+  local conf="/etc/NetworkManager/dnsmasq-shared.d/printo.conf"
+  OLD_PORTAL=0
+  if [[ -f "$conf" ]] && ! sudo -n rm -f "$conf" 2>/dev/null; then OLD_PORTAL=1; fi
+  if [[ -n "${IFACE:-}" && -n "${PORT:-}" ]]; then
+    sudo -n iptables -t nat -D PREROUTING -i "$IFACE" -p tcp --dport 80 -j REDIRECT --to-ports "$PORT" >/dev/null 2>&1 || true
+  fi
+  sudo -n nft delete table ip printo >/dev/null 2>&1 || true
+}
+
 bring_hotspot() {
   command -v nmcli >/dev/null || { printf '%s\n' "This computer can't share a wifi hotspot."; exit 1; }
   IFACE="$(wifi_iface)"
   [[ -n "$IFACE" ]] || { printf '%s\n' "This computer doesn't have a wifi device that can be a hotspot."; exit 1; }
+  clear_old_portal
   nmcli radio wifi on >/dev/null
   remember_previous
   if have_hotspot; then
@@ -87,103 +100,8 @@ bring_hotspot() {
   HOT=1
 }
 
-keep_sudo() {
-  # A long shop day outlives one password prompt. Refresh it away from Ctrl+C.
-  setsid bash -c 'while sudo -n -v >/dev/null 2>&1; do sleep 50; done' >/dev/null 2>&1 &
-  SUDO_KEEP=$!
-}
-
-install_dns() {
-  local tmp
-  tmp="$(mktemp)"
-  "$PYTHON" -c 'import sys; from printo.shopnet import dns_config; sys.stdout.write(dns_config(sys.argv[1]))' "$1" > "$tmp"
-  sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
-  sudo cp "$tmp" /etc/NetworkManager/dnsmasq-shared.d/printo.conf
-  sudo chmod 644 /etc/NetworkManager/dnsmasq-shared.d/printo.conf
-  rm -f "$tmp"
-}
-
-bounce_hotspot() {
-  # The name server reads its file only as it starts.
-  nmcli connection down printO >/dev/null 2>&1 || true
-  nmcli connection up printO >/dev/null
-}
-
-dns_ready() {
-  "$PYTHON" -c 'import sys
-from printo.shopnet import records
-ip = sys.argv[1]
-found = records(ip, "captive.apple.com", "A", 1.2)
-other = records(ip, "captive.apple.com", "AAAA", 1.2)
-raise SystemExit(0 if found == [ip] and other is not None else 1)' "$1"
-}
-
-wait_dns() {
-  local i
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    if dns_ready "$1"; then return 0; fi
-    sleep 0.3
-  done
-  return 1
-}
-
-clear_old_redirect() {
-  [[ -n "${IFACE:-}" && -n "${PORT:-}" ]] || return 0
-  sudo -n iptables -t nat -D PREROUTING -i "$IFACE" -p tcp --dport 80 -j REDIRECT --to-ports "$PORT" >/dev/null 2>&1 || true
-}
-
-install_redirect() {
-  # Port 80 is where a phone looks. Nothing else on that wifi should sit and time out.
-  sudo nft delete table ip printo >/dev/null 2>&1 || true
-  sudo nft add table ip printo || return 1
-  sudo nft add chain ip printo pre '{ type nat hook prerouting priority dstnat; policy accept; }' || return 1
-  sudo nft add rule ip printo pre iifname "$IFACE" tcp dport 80 redirect to :"$PORT" || return 1
-  sudo nft add chain ip printo block '{ type filter hook forward priority filter; policy accept; }' || return 1
-  sudo nft add rule ip printo block iifname "$IFACE" tcp dport '{ 443, 853 }' reject with tcp reset || return 1
-  sudo nft add rule ip printo block iifname "$IFACE" udp dport 853 reject || return 1
-}
-
-ask_for_portal() {
-  ROOT_OK=0
-  printf '%s\n' "To let the page open by itself on a phone, your computer password is needed once."
-  if ! sudo -v; then
-    printf '%s\n' "Without that, the page can still be opened by typing the address."
-    return 0
-  fi
-  keep_sudo
-  install_dns "10.42.0.1"
-  ROOT_OK=1
-}
-
-prepare_portal() {
-  local ip="$1"
-  AUTO=0
-  ADDRESS="${ip}:${PORT}"
-  [[ "${ROOT_OK:-0}" == 1 ]] || return 0
-  if [[ "$ip" != "10.42.0.1" ]]; then
-    install_dns "$ip"
-    bounce_hotspot
-    ip="$(shop_address)"
-  fi
-  if ! wait_dns "$ip"; then
-    bounce_hotspot
-    ip="$(shop_address)"
-  fi
-  clear_old_redirect
-  if install_redirect; then
-    ADDRESS="$ip"
-    export PRINTO_PUBLIC_PORT=80
-    if wait_dns "$ip"; then AUTO=1; fi
-  fi
-}
-
 close_hotspot() {
-  if [[ -n "${SUDO_KEEP:-}" ]]; then kill "$SUDO_KEEP" >/dev/null 2>&1 || true; fi
-  if [[ -n "${IFACE:-}" ]]; then
-    sudo -n nft delete table ip printo >/dev/null 2>&1 || true
-    clear_old_redirect
-  fi
-  sudo -n rm -f /etc/NetworkManager/dnsmasq-shared.d/printo.conf >/dev/null 2>&1 || true
+  clear_old_portal
   nmcli connection down printO >/dev/null 2>&1 || true
   if [[ -n "${PREVIOUS:-}" ]]; then sleep 0.4; nmcli connection up "$PREVIOUS" >/dev/null 2>&1 || true; fi
 }
