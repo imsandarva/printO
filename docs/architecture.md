@@ -65,4 +65,6 @@ If the queue says the printer is off or unplugged, the file is not submitted. Se
 
 `scripts/open-counter` only opens the counter again, if that window was closed. It does not start a second copy.
 
+`./shopkeeperpanel` is a separate small program for looking at the counter while changing it. It serves the counter's own files and fills them with sample files held in memory. It does not start the shop, talk to the printer, or touch wifi. Saving those files updates the open page. Closing it leaves a running shop alone.
+
 At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter is not started there. The preview on the counter is grey because the MF3010 prints black and white.

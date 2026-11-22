@@ -230,7 +230,8 @@ function renderPaper() {
 
 function resetPaper() {
   const slot = document.getElementById("paper");
-  if (slot) slot.dataset.key = "";
+  // Drop the marker. An empty one already means this file has no pages, so it cannot also mean the page should be drawn again.
+  if (slot) delete slot.dataset.key;
 }
 
 async function showPreview(job) {

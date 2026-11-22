@@ -27,6 +27,14 @@ If the counter window was closed, this only opens it again. It does not start an
 ./scripts/open-counter
 ```
 
+To look at the counter while changing it, without starting the shop and without touching wifi:
+
+```bash
+./shopkeeperpanel
+```
+
+That opens the counter with sample files. Saving the page updates the open window. A change to the styling keeps your place; a change to the page itself loads it again. Press Ctrl+C in that window when you are done. The shop is still `./scripts/start-shop`. This stays off the shop's port, so the two can be open together. If the window does not appear, the address is printed there.
+
 The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown on the counter and when the shop starts. Write them where customers can see them too. The address of the page is saved there as well, once the shop has started.
 
 `.venv/bin/printo` still starts the server alone, without touching wifi.

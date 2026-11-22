@@ -62,6 +62,10 @@ Printing a `done` job sends it again. That is the reprint. The printer being off
 
 `done` / "Sent to the printer." means CUPS took the job and finished sending it. It does not prove a sheet landed in the tray. If the result looks wrong, print it again. If it sits with the printer for 20 minutes, printO cancels it and keeps the file.
 
+## Changing the counter
+
+`./shopkeeperpanel` opens the counter with sample files: one waiting to print, one already sent, one that needs another try, and the others in between. Clicks behave as they do at the shop, but nothing is printed and the wifi stays as it is. Leave that window open while you change the page. Press Ctrl+C when you are done looking.
+
 ## After hours
 
 Printed files are deleted about 2 hours later. Files that were never sent, and failed ones, are deleted after about 24 hours. Nothing is deleted while it is still being prepared or is in the printer queue. A file removed by hand is deleted immediately.

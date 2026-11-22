@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# The counter, on its own, so you can look at it while you change it.
+# This does not start the shop, and it does not touch wifi.
+
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m printo.preview "$@"
