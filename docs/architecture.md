@@ -4,6 +4,7 @@ printO is one Python process on the shop laptop. Phones on the shop wifi open a 
 
 Citizenship copies and double-sided books are intentionally not in this version.
 
+
 ## Pieces
 
 The entrypoint (`printo`) only loads settings and starts the process. `wiring.py` connects the pieces. Each piece does one job. The process does not manage wifi. `scripts/start-shop` does, and it is the thing you leave open.
