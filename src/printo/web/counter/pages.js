@@ -1,5 +1,6 @@
 /* Which pages to print. One choice: all, even, odd, or a from–to range.
-   Page numbers start at 1. The fields never keep a 0 or a page past the end. */
+   Page numbers start at 1. The fields never keep a 0 or a page past the end.
+   The italic tally sits under the choices, or under From–To for a custom range. */
 
 import { el } from "./dom.js";
 import { checkIcon } from "./icons.js";
@@ -42,7 +43,9 @@ export function paintPages(draft, job, hooks) {
   draft.count = atLeastOne(job.page_count || draft.count);
   const wrap = el("div", { class: "field pages" });
   const span = range(draft);
-  wrap.append(head(draft.count), choices(draft, hooks), span);
+  wrap.append(head(draft.count), choices(draft, hooks));
+  if (draft.choice !== "custom") wrap.append(tallyNode(draft));
+  wrap.append(span);
   reveal(span, draft, hooks.wasOpen);
   return wrap;
 }
@@ -60,13 +63,56 @@ function atLeastOne(pageCount) {
 
 function head(count) {
   const row = el("div", { class: "field-head" });
-  const title = el("span", { text: "Pages", attrs: { id: "pages-label" } });
-  row.append(title, el("span", { class: "field-meta", text: count === 1 ? "1 page" : count + " pages" }));
+  row.append(el("span", { text: "Pages", attrs: { id: "pages-label" } }), el("span", { class: "field-meta", text: count === 1 ? "1 page" : count + " pages" }));
   return row;
 }
 
+function tallyNode(draft) {
+  const phrase = pagesInTotal(printedPages(draft));
+  const shift = draft.shown != null && draft.shown !== phrase && motionOk();
+  draft.shown = phrase;
+  return el("p", {
+    class: shift ? "page-tally shift" : "page-tally",
+    text: phrase,
+    attrs: { id: "pages-tally", "aria-live": "polite", "aria-atomic": "true" },
+  });
+}
+
+function refreshTally(draft) {
+  const node = document.getElementById("pages-tally");
+  if (!node) return;
+  const phrase = pagesInTotal(printedPages(draft));
+  if (node.textContent === phrase) { draft.shown = phrase; return; }
+  node.textContent = phrase;
+  draft.shown = phrase;
+  if (!motionOk()) return;
+  // Drop the class and force layout so the fade plays again on the same line.
+  node.classList.remove("shift");
+  void node.offsetWidth;
+  node.classList.add("shift");
+}
+
+function motionOk() {
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/* Odd and even use the same split the printer uses: page 1 is odd. */
+function printedPages(draft) {
+  const count = atLeastOne(draft.count);
+  if (draft.choice === "odd") return Math.ceil(count / 2);
+  if (draft.choice === "even") return Math.floor(count / 2);
+  if (draft.choice !== "custom") return count;
+  const start = Math.min(clampPage(draft.from, count), clampPage(draft.to, count));
+  const end = Math.max(clampPage(draft.from, count), clampPage(draft.to, count));
+  return end - start + 1;
+}
+
+function pagesInTotal(count) {
+  return (count === 1 ? "1 page" : count + " pages") + " in total";
+}
+
 function choices(draft, hooks) {
-  const group = el("div", { class: "page-choices", attrs: { role: "radiogroup", "aria-labelledby": "pages-label" } });
+  const group = el("div", { class: "page-choices", attrs: { role: "radiogroup", "aria-labelledby": "pages-label", "aria-describedby": "pages-tally" } });
   group.append(...CHOICES.map((item) => choiceButton(item, draft, hooks)));
   return group;
 }
@@ -116,6 +162,7 @@ function range(draft) {
   const row = el("div", { class: "page-range" });
   row.append(bound(draft, "from", "From", "page-from"), bound(draft, "to", "To", "page-to"));
   clip.append(row);
+  if (draft.choice === "custom") clip.append(tallyNode(draft));
   span.append(clip);
   return span;
 }
@@ -142,6 +189,7 @@ function onType(draft, which, input) {
   if (live.value == null || draft[which] === live.value) return;
   draft[which] = live.value;
   draft.dirty = true;
+  refreshTally(draft);
 }
 
 function onBlur(draft, which) {
@@ -152,6 +200,7 @@ function onBlur(draft, which) {
   draft.pages = writePages(draft);
   draft.dirty = true;
   showRange(draft);
+  refreshTally(draft);
 }
 
 function typedOrKept(kept, id, count) {

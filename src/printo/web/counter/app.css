@@ -652,6 +652,22 @@ body { height: 100dvh; overflow: hidden; }
 
 .field-meta { font-size: 0.75rem; font-weight: 400; letter-spacing: 0.01em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 
+.page-tally {
+  margin: 0;
+  padding: 4px 0 0 25px;
+  font-style: italic;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0.008em;
+  line-height: 1.35;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.page-range + .page-tally { padding-top: 8px; padding-bottom: 2px; }
+
+.page-tally.shift { animation: tally-in 0.28s cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+
 .page-choices { display: flex; flex-direction: column; margin-top: 2px; }
 
 .page-choice {
@@ -892,6 +908,11 @@ body { height: 100dvh; overflow: hidden; }
 
 .toast-undo:hover { color: #fff; }
 
+@keyframes tally-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
 @keyframes rise {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
@@ -926,6 +947,7 @@ body { height: 100dvh; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .fit input[type="range"]::-webkit-slider-thumb,
   .fit input[type="range"]::-moz-range-thumb { transition: none; }
+  .page-tally.shift { animation: none; }
 }
 
 @media (max-width: 860px) {
