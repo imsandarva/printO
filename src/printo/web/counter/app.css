@@ -367,16 +367,6 @@ body { height: 100dvh; overflow: hidden; }
 
 .file, .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.label { font-size: 0.86rem; font-weight: 600; }
-
-.label[data-status="ready"] { color: var(--good); }
-
-.label[data-status="printing"] { color: var(--accent-deep); }
-
-.label[data-status="failed"] { color: var(--bad); }
-
-.label[data-status="done"] { color: var(--ink-soft); font-weight: 500; }
-
 .desk {
   overflow: auto;
   padding: 8px 36px 32px;

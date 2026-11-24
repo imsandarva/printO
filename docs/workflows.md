@@ -58,7 +58,7 @@ The counter screen puts the file list on the left, the print controls beside it,
 | `DELETE /admin/jobs/{id}` | Delete it for good. Only once it is in Trash. Cancels the printer job if one is still going. |
 | `GET /admin/events` | Server-sent events. A nudge, not the record. On reconnect, load the job list again. |
 
-A job object carries `name`, `status`, `label`, `message`, `page_count`, `pages`, `copies`, `can_print`, and `can_retry`. The counter shows the file name. `label` and `message` are for a person. `status` is for the program: `received`, `converting`, `ready`, `printing`, `done`, `failed`. When a file is ready, the counter does not repeat "Ready to print." under the name.
+A job object carries `name`, `status`, `label`, `message`, `page_count`, `pages`, `copies`, `can_print`, and `can_retry`. In the file list, the counter shows only the file name and when it arrived. When a file is selected, `message` can appear under the name for anything that is not ready yet. `label` and `status` stay on the wire for the program and other views; `status` values are `received`, `converting`, `ready`, `printing`, `done`, `failed`.
 
 Pages are 1-based: `all`, `2`, `1-3`, `1-3, 5`. Out of range is refused. Copies are 1 to 20. Pages times copies cannot pass 400 sheets.
 

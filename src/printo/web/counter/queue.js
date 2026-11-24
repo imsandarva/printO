@@ -98,7 +98,7 @@ function card(job, model, now) {
     el("span", { class: "num", text: job.name || "Untitled", attrs: { title: job.name || "" } }),
     el("span", { class: "when", text: whenLabel(job.created_at, now) }),
   );
-  body.append(top, el("span", { class: "label", text: job.label || "", attrs: { "data-status": job.status || "" } }));
+  body.append(top);
   if (picking) button.append(tick(on));
   button.append(body);
   return button;
