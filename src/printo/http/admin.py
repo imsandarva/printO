@@ -6,7 +6,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from printo.desk import desk_message
 from printo.domain.job import Job
 from printo.errors import UserError
 from printo.http.respond import succeed
@@ -23,11 +22,6 @@ class PrintBody(BaseModel):
 @router.get("/health")
 def health() -> object:
     return succeed({"message": running()})
-
-
-@router.get("/front")
-def front(request: Request) -> object:
-    return succeed({"message": desk_message(request.app.state.ctx.settings.data_dir)})
 
 
 @router.get("/printer")

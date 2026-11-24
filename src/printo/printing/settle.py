@@ -23,6 +23,6 @@ def settle(jobs: JobStore, events: Events, clock: Clock, settings: Settings, job
     )
     if job is None:
         return None
-    log.info("%s is %s", job.public_code, status)
+    log.info("%s is %s", job.original_name, status)
     events.publish_job(job)
     return job

@@ -4,8 +4,8 @@ from printo.domain.job import Job
 from printo.domain.status import can_print, can_retry, label_for
 
 
-def received(number: str) -> str:
-    return f"Received. Please tell the person at the counter your number, {number}."
+def received() -> str:
+    return "Received."
 
 
 def too_big() -> str:
@@ -176,13 +176,6 @@ def running() -> str:
     return "printO is running."
 
 
-def front_desk(name: str, password: str, address: str) -> str:
-    line = f"Customers join {name}. The password is {password}."
-    if address:
-        line += f" Then they open {address}."
-    return line
-
-
 def connected() -> str:
     return "Connected."
 
@@ -248,7 +241,6 @@ def customer_copy() -> dict[str, str]:
 def present(job: Job) -> dict:
     return {
         "id": job.id,
-        "number": job.public_code,
         "name": job.original_name,
         "kind": job.kind,
         "status": job.status,

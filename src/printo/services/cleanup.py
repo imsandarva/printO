@@ -42,7 +42,7 @@ class Cleanup:
                 continue
             self.files.remove_job(taken.id)
             self.events.publish_removed(taken.id)
-            log.info("removed old file %s", taken.public_code)
+            log.info("removed old file %s", taken.original_name)
         cutoff = self.clock.now() - timedelta(seconds=self.settings.partial_max_age_seconds)
         self.files.drop_old_partials(cutoff)
 

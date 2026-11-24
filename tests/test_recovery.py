@@ -39,5 +39,5 @@ def test_startup_repairs_a_half_finished_queue(tmp_path):
         assert "interrupted" in jobs["lost.pdf"]["message"]
         assert not (ctx.files.jobs / "not-a-job").exists()
         assert not (ctx.files.partials / "left.partial").exists()
-        ready = _wait(client, jobs["photo.jpg"]["number"], {"ready", "failed"}, seconds=5)
+        ready = _wait(client, "photo.jpg", {"ready", "failed"}, seconds=5)
         assert ready["status"] == "ready"

@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from printo.clock import SystemClock
@@ -11,12 +13,41 @@ def test_second_transition_loses(tmp_path):
     store = JobStore(Database(tmp_path / "printo.db"), SystemClock())
     job = store.insert_received("a" * 32, "../../नागरिकता.pdf", "pdf", ".pdf", 12)
     assert job.original_name == "नागरिकता.pdf"
-    assert job.public_code.isalnum() and len(job.public_code) == 4
     first = store.transition(job.id, expect={job.status}, status=READY, page_count=2, message="Ready to print.")
     second = store.transition(job.id, expect={job.status}, status=PRINTING, message="Printing.")
     assert first is not None and first.status == READY and first.page_count == 2
     assert second is None
     assert store.get(job.id).status == READY
+    store.db.close()
+
+
+def test_visit_columns_do_not_hide_the_queue(tmp_path):
+    path = tmp_path / "printo.db"
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA user_version = 2")
+    conn.execute(
+        """CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, public_code TEXT NOT NULL UNIQUE, original_name TEXT NOT NULL,
+            kind TEXT NOT NULL, source_ext TEXT NOT NULL, status TEXT NOT NULL, failure_stage TEXT,
+            message TEXT NOT NULL, byte_size INTEGER NOT NULL, page_count INTEGER, pages_spec TEXT,
+            copies INTEGER, cups_job_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            delete_after TEXT, visit_token TEXT NOT NULL DEFAULT '', visit_code TEXT NOT NULL DEFAULT ''
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO jobs (
+            id, public_code, original_name, kind, source_ext, status, message, byte_size, created_at, updated_at, visit_token, visit_code
+        ) VALUES (?, ?, ?, 'image', '.jpg', 'ready', 'Ready to print.', 12, ?, ?, ?, ?)""",
+        ("b" * 32, "V8QR", "passport.jpg", "2026-11-21T10:03:04+00:00", "2026-11-21T10:03:04+00:00", "b" * 32, "V8QR"),
+    )
+    conn.commit()
+    conn.close()
+    store = JobStore(Database(path), SystemClock())
+    found = store.all()
+    assert len(found) == 1 and found[0].original_name == "passport.jpg"
+    columns = {row[1] for row in store.db.query("PRAGMA table_info(jobs)")}
+    assert "public_code" not in columns
+    assert store.db.query("PRAGMA user_version")[0][0] == 3
     store.db.close()
 
 

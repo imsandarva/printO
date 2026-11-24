@@ -21,8 +21,8 @@ def test_word_file_becomes_a_pdf(tmp_path):
     docx = tmp_path / "note.docx"
     _write_docx(docx)
     with running(tmp_path, office_timeout_seconds=90) as (client, _ctx, _cups):
-        number = _upload(client, "note.docx", docx.read_bytes()).json()["number"]
-        job = _wait(client, number, {"ready", "failed"}, seconds=90)
+        assert _upload(client, "note.docx", docx.read_bytes()).status_code == 201
+        job = _wait(client, "note.docx", {"ready", "failed"}, seconds=90)
         assert job["status"] == "ready", job["message"]
         assert job["page_count"] >= 1
 

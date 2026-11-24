@@ -10,12 +10,12 @@ def _upload(client, name, data):
     return client.post("/upload", files={"file": (name, data, "application/octet-stream")})
 
 
-def _wait(client, number, statuses, seconds=5):
+def _wait(client, name, statuses, seconds=5):
     deadline = time.time() + seconds
     last = None
     while time.time() < deadline:
         jobs = client.get("/admin/jobs").json()["jobs"]
-        last = next((job for job in jobs if job["number"] == number), None)
+        last = next((job for job in jobs if job["name"] == name), None)
         if last and last["status"] in statuses:
             return last
         time.sleep(0.05)
@@ -27,17 +27,17 @@ def test_photo_is_prepared_and_printed_in_order(tmp_path):
         response = _upload(client, "../../नागरिकता.jpg", jpeg_bytes())
         assert response.status_code == 201
         body = response.json()
-        assert body["ok"] is True and "counter" in body["message"]
-        job = _wait(client, body["number"], {"ready"})
+        assert body["ok"] is True and body["message"] == "Received." and "number" not in body
+        job = _wait(client, "नागरिकता.jpg", {"ready"})
         assert job["name"] == "नागरिकता.jpg"
         assert job["page_count"] == 1 and job["can_print"] is True
         printed = client.post(f"/admin/jobs/{job['id']}/print", json={"pages": "1", "copies": 2})
         assert printed.status_code == 200
-        done = _wait(client, body["number"], {"done"})
+        done = _wait(client, "नागरिकता.jpg", {"done"})
         assert done["message"] == "Sent to the printer."
         assert done["copies"] == 2
         assert len(cups.submitted) == 1
-        assert cups.submitted[0][1] == f"printo {body['number']}"
+        assert cups.submitted[0][1] == "printo नागरिकता.jpg"
         saved = PdfReader(str(ctx.files.to_print(job["id"])))
         assert len(saved.pages) == 2
         file_response = client.get(f"/admin/jobs/{job['id']}/file")
@@ -47,11 +47,10 @@ def test_photo_is_prepared_and_printed_in_order(tmp_path):
 
 def test_selected_pdf_pages_repeat(tmp_path):
     with running(tmp_path) as (client, ctx, cups):
-        response = _upload(client, "letter.pdf", pdf_bytes((200, 300, 400)))
-        number = response.json()["number"]
-        job = _wait(client, number, {"ready"})
+        assert _upload(client, "letter.pdf", pdf_bytes((200, 300, 400))).status_code == 201
+        job = _wait(client, "letter.pdf", {"ready"})
         assert client.post(f"/admin/jobs/{job['id']}/print", json={"pages": "3,1", "copies": 2}).status_code == 200
-        _wait(client, number, {"done"})
+        _wait(client, "letter.pdf", {"done"})
         widths = [int(page.mediabox.width) for page in PdfReader(str(ctx.files.to_print(job["id"]))).pages]
         assert widths == [400, 200, 400, 200]
         assert len(cups.submitted) == 1
@@ -61,8 +60,8 @@ def test_printer_off_does_not_submit(tmp_path):
     cups = FakeCups()
     cups.state = "off"
     with running(tmp_path, cups=cups) as (client, _ctx, cups):
-        number = _upload(client, "a.pdf", pdf_bytes((200,))).json()["number"]
-        job = _wait(client, number, {"ready"})
+        assert _upload(client, "a.pdf", pdf_bytes((200,))).status_code == 201
+        job = _wait(client, "a.pdf", {"ready"})
         refused = client.post(f"/admin/jobs/{job['id']}/print", json={})
         assert refused.status_code == 409
         assert "turned off" in refused.json()["message"]
@@ -74,13 +73,13 @@ def test_second_click_and_give_up(tmp_path):
     cups = FakeCups()
     cups.hold = True
     with running(tmp_path, cups=cups, print_give_up_seconds=0.8) as (client, _ctx, cups):
-        number = _upload(client, "a.pdf", pdf_bytes((200,))).json()["number"]
-        job = _wait(client, number, {"ready"})
+        assert _upload(client, "a.pdf", pdf_bytes((200,))).status_code == 201
+        job = _wait(client, "a.pdf", {"ready"})
         assert client.post(f"/admin/jobs/{job['id']}/print", json={"copies": 1}).status_code == 200
         again = client.post(f"/admin/jobs/{job['id']}/print", json={"copies": 1})
         assert again.status_code == 409
         assert "already" in again.json()["message"]
-        failed = _wait(client, number, {"failed"}, seconds=3)
+        failed = _wait(client, "a.pdf", {"failed"}, seconds=3)
         assert "too long" in failed["message"]
         assert cups.cancelled
         assert failed["can_print"] is True
@@ -119,20 +118,20 @@ def test_locked_pdf_can_be_retried_only_when_that_makes_sense(tmp_path):
     buffer = BytesIO()
     writer.write(buffer)
     with running(tmp_path) as (client, _ctx, _cups):
-        number = _upload(client, "locked.pdf", buffer.getvalue()).json()["number"]
-        job = _wait(client, number, {"failed"})
+        assert _upload(client, "locked.pdf", buffer.getvalue()).status_code == 201
+        job = _wait(client, "locked.pdf", {"failed"})
         assert "password" in job["message"] and job["can_retry"] is True
         assert client.post(f"/admin/jobs/{job['id']}/print", json={}).status_code == 409
         retried = client.post(f"/admin/jobs/{job['id']}/retry")
         assert retried.status_code == 200
-        again = _wait(client, number, {"failed"})
+        again = _wait(client, "locked.pdf", {"failed"})
         assert again["can_retry"] is True
 
 
 def test_remove_deletes_the_file(tmp_path):
     with running(tmp_path) as (client, ctx, _cups):
-        number = _upload(client, "a.pdf", pdf_bytes((200,))).json()["number"]
-        job = _wait(client, number, {"ready"})
+        assert _upload(client, "a.pdf", pdf_bytes((200,))).status_code == 201
+        job = _wait(client, "a.pdf", {"ready"})
         removed = client.delete(f"/admin/jobs/{job['id']}")
         assert removed.status_code == 200 and removed.json()["message"] == "Removed."
         assert client.get(f"/admin/jobs/{job['id']}").status_code == 404
@@ -150,8 +149,8 @@ def test_disk_full_and_health(tmp_path):
 
 def test_bad_page_range_leaves_the_file(tmp_path):
     with running(tmp_path) as (client, _ctx, cups):
-        number = _upload(client, "a.pdf", pdf_bytes((200, 300))).json()["number"]
-        job = _wait(client, number, {"ready"})
+        assert _upload(client, "a.pdf", pdf_bytes((200, 300))).status_code == 201
+        job = _wait(client, "a.pdf", {"ready"})
         refused = client.post(f"/admin/jobs/{job['id']}/print", json={"pages": "9"})
         assert refused.status_code == 400 and "2 pages" in refused.json()["message"]
         assert cups.submitted == []

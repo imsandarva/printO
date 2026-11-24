@@ -82,7 +82,7 @@ class Converter:
             self._fail(job.id, exc.message)
             return
         except Exception:
-            log.exception("could not prepare %s", job.public_code)
+            log.exception("could not prepare %s", job.original_name)
             self._fail(job.id, convert_failed())
             return
         done = self.jobs.transition(
@@ -90,7 +90,7 @@ class Converter:
             message=ready(), failure_stage=None, delete_after=after(self.jobs.clock, self.settings.unprinted_keep_hours),
         )
         if done is not None:
-            log.info("ready %s (%s pages)", done.public_code, done.page_count)
+            log.info("ready %s (%s pages)", done.original_name, done.page_count)
             self.events.publish_job(done)
 
     def _fail(self, job_id: str, message: str) -> None:
@@ -99,5 +99,5 @@ class Converter:
             delete_after=after(self.jobs.clock, self.settings.unprinted_keep_hours),
         )
         if failed is not None:
-            log.info("prepare failed %s", failed.public_code)
+            log.info("prepare failed %s", failed.original_name)
             self.events.publish_job(failed)

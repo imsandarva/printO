@@ -1,22 +1,11 @@
-"""The note on the counter that tells a customer how to connect."""
+"""The shop name customers already joined. The password stays out of this."""
 
 from pathlib import Path
-
-from printo.messages import front_desk
 
 
 def shop_name(data_dir: Path) -> str:
     """The wifi name customers already joined. Never the password."""
     return _read(data_dir / "wifi").get("ssid", "").strip()
-
-
-def desk_message(data_dir: Path) -> str:
-    found = _read(data_dir / "wifi")
-    name = found.get("ssid", "").strip()
-    password = found.get("password", "").strip()
-    if not name or not password:
-        return ""
-    return front_desk(name, password, found.get("address", "").strip())
 
 
 def _read(path: Path) -> dict[str, str]:

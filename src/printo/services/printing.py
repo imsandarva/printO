@@ -47,21 +47,21 @@ class PrintService:
         locked = self._lock(job, pages, copies)
         try:
             self._write(locked, indexes, copies)
-            cups_id = self.cups.submit(self.files.to_print(locked.id), f"printo {locked.public_code}")
+            cups_id = self.cups.submit(self.files.to_print(locked.id), f"printo {locked.original_name}")
         except UserError as exc:
             self._fail(locked.id, exc.message)
             raise
         except Exception:
-            log.exception("print failed for %s", locked.public_code)
+            log.exception("print failed for %s", locked.original_name)
             self._fail(locked.id, compose_failed())
             raise UserError(compose_failed()) from None
         saved = self.jobs.transition(locked.id, expect={PRINTING}, status=PRINTING, cups_job_id=cups_id, message=printing())
         if saved is None:
             # lp already accepted it, and the row disappeared. Cancel so it cannot print unseen.
-            log.error("printer accepted %s but %s vanished", cups_id, locked.public_code)
+            log.error("printer accepted %s but %s vanished", cups_id, locked.original_name)
             self.cups.cancel(cups_id)
             raise UserError(not_found(), 404)
-        log.info("sent %s as %s", saved.public_code, cups_id)
+        log.info("sent %s as %s", saved.original_name, cups_id)
         return saved
 
     def _ready(self, job_id: str) -> Job:
@@ -112,5 +112,5 @@ class PrintService:
             raise UserError(not_found(), 404)
         self.files.remove_job(job.id)
         self.events.publish_removed(job.id)
-        log.info("removed %s", job.public_code)
+        log.info("removed %s", job.original_name)
         return removed_but_printer() if warning else removed()

@@ -9,7 +9,6 @@ ID_RE = re.compile(r"^[a-f0-9]{32}$")
 @dataclass(frozen=True, slots=True)
 class Job:
     id: str
-    public_code: str
     original_name: str
     kind: str
     source_ext: str

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The counter, on its own, so you can look at it while you change it.
-# This does not start the shop, and it does not touch wifi.
+# The counter, on its own, wired to the real shop data while you change the page.
+# This does not start the hotspot. It starts printO only when nothing is listening yet.
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"

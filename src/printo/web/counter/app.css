@@ -1,4 +1,4 @@
-/* The counter. A list of numbers on the left, the file they're holding on the right. */
+/* The counter. The list on the left, the preview on the right. */
 
 body { height: 100dvh; overflow: hidden; }
 
@@ -36,8 +36,6 @@ body { height: 100dvh; overflow: hidden; }
 .printer[data-state="off"] .dot,
 .printer[data-state="missing"] .dot,
 .printer[data-state="down"] .dot { background: var(--bad); }
-
-.front { margin: 0; padding: 0 28px 12px; color: var(--ink-soft); font-size: 0.95rem; }
 
 .main { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
 
@@ -90,7 +88,7 @@ body { height: 100dvh; overflow: hidden; }
 
 .card-top { width: 100%; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 
-.num { font-weight: 650; font-size: 1.2rem; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.num { flex: 1; min-width: 0; font-weight: 650; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .when, .file { color: var(--ink-soft); font-size: 0.86rem; }
 
@@ -123,10 +121,11 @@ body { height: 100dvh; overflow: hidden; }
 .ticket {
   font-family: var(--serif);
   font-weight: 600;
-  font-size: clamp(3.4rem, 6vw, 4.6rem);
-  line-height: 0.9;
-  letter-spacing: 0.05em;
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
   margin: 2px 0 10px;
+  overflow-wrap: anywhere;
 }
 
 .name { font-size: 1.05rem; font-weight: 600; margin-top: 2px; }

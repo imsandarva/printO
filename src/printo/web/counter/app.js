@@ -26,21 +26,7 @@ function boot() {
   window.setInterval(loadPrinter, 8000);
   loadPrinter();
   loadJobs();
-  loadFront();
   listen();
-}
-
-async function loadFront() {
-  const node = document.getElementById("front");
-  if (!node) return;
-  try {
-    const body = await readJSON("/admin/front");
-    if (!body.ok || !body.message) return;
-    node.hidden = false;
-    node.textContent = body.message;
-  } catch {
-    node.hidden = true;
-  }
 }
 
 function refresh() { loadJobs(); loadPrinter(); }
@@ -186,9 +172,9 @@ function card(job) {
   const classes = ["card", job.id === state.selected ? "on" : "", isFresh(job.id) ? "fresh" : ""].filter(Boolean).join(" ");
   const button = el("button", { class: classes, attrs: { "aria-pressed": job.id === state.selected ? "true" : "false" }, on: { click: () => select(job.id) } });
   const top = el("div", { class: "card-top" });
-  top.append(el("span", { class: "num", text: job.number }), el("span", { class: "when", text: ago(job.created_at) }));
+  top.append(el("span", { class: "num", text: job.name || "Untitled", attrs: { title: job.name || "" } }), el("span", { class: "when", text: ago(job.created_at) }));
   const label = el("span", { class: "label", text: job.label || "", attrs: { "data-status": job.status || "" } });
-  button.append(top, el("span", { class: "file", text: job.name || "" }), label);
+  button.append(top, label);
   return button;
 }
 
@@ -209,11 +195,13 @@ function renderIntro() {
     intro.replaceChildren(block);
     return;
   }
-  const key = [job.id, job.name, job.message, job.status].join("\n");
+  const showMessage = Boolean(job.message) && job.status !== "ready";
+  const key = [job.id, job.name, showMessage ? job.message : "", job.status].join("\n");
   if (intro.dataset.key === key) return;
   intro.dataset.key = key;
-  const message = el("p", { class: "message", text: job.message || "", attrs: { "data-status": job.status || "" } });
-  intro.replaceChildren(el("h1", { class: "ticket", text: job.number }), el("p", { class: "name", text: job.name || "", attrs: { title: job.name || "" } }), message);
+  const nodes = [el("h1", { class: "ticket", text: job.name || "Untitled", attrs: { title: job.name || "" } })];
+  if (showMessage) nodes.push(el("p", { class: "message", text: job.message, attrs: { "data-status": job.status || "" } }));
+  intro.replaceChildren(...nodes);
 }
 
 function renderPaper() {

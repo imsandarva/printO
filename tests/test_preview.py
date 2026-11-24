@@ -13,7 +13,7 @@ from printo.preview.watch import watch
 
 
 def test_counter_opens_with_sample_files():
-    preview = start(port=0, delay=0.05)
+    preview = start(port=0, delay=0.05, sample=True)
     try:
         assert preview.server.server_address[0] == "127.0.0.1"
         assert already_running(preview.server.server_address[1])
@@ -27,7 +27,7 @@ def test_counter_opens_with_sample_files():
         assert _open(preview.url.replace("/admin/", "/"))[0] == 404
         jobs = _json(_open(f"{preview.url}jobs"))
         assert jobs["ok"] is True
-        ready = next(job for job in jobs["jobs"] if job["number"] == "K7M2")
+        ready = next(job for job in jobs["jobs"] if job["name"] == "School admission form.pdf")
         assert ready["can_print"] is True and ready["page_count"] == 4
         bad = _json(_open(f"{preview.url}jobs/{ready['id']}/print", {"pages": "99", "copies": 1}))
         assert bad["ok"] is False and "4 pages" in bad["message"]

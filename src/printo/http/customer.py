@@ -13,14 +13,14 @@ router = APIRouter()
 @router.get("/shop")
 def shop(request: Request) -> object:
     settings = request.app.state.ctx.settings
-    # Name only. The password stays on the counter.
+    # Name only. The password is never sent to the phone.
     return succeed({"name": shop_name(settings.data_dir), "max_bytes": settings.max_upload_bytes})
 
 
 @router.post("/upload")
 async def upload(request: Request, file: UploadFile = File(...)):
     job = await request.app.state.ctx.ingest.accept(file.filename or "", _blocks(file), host_of(request))
-    return succeed({"number": job.public_code, "message": received(job.public_code)}, 201)
+    return succeed({"message": received()}, 201)
 
 
 async def _blocks(file: UploadFile):

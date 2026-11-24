@@ -33,9 +33,9 @@ To look at the counter while changing it, without starting the shop and without 
 ./shopkeeperpanel
 ```
 
-That opens the counter with sample files. Saving the page updates the open window. A change to the styling keeps your place; a change to the page itself loads it again. Press Ctrl+C in that window when you are done. The shop is still `./scripts/start-shop`. This stays off the shop's port, so the two can be open together. If the window does not appear, the address is printed there.
+That opens the same counter the shopkeeper would see, with the real files already in the shop. It does not turn on the hotspot. If printO is not running yet, it starts only that part in the background; if the shop is already open, it reuses it. Saving the counter page on disk updates the open window. Press Ctrl+C when you are done. It listens on a port just above the shop's, so both can be open together.
 
-The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown on the counter and when the shop starts. Write them where customers can see them too. The address of the page is saved there as well, once the shop has started.
+The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown when the shop starts. Write them where customers can see them too. The address of the page is saved there as well, once the shop has started.
 
 `.venv/bin/printo` still starts the server alone, without touching wifi.
 

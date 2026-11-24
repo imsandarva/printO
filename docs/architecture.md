@@ -13,7 +13,7 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | HTTP | `POST /upload` for phones. `/admin/...` for the laptop only. |
 | Screens | The phone page and the counter. Plain files served by this process, so there is no second program and no build step to keep in memory. The phone page is one screen: choose, review, send, and see that the shop received the files. Previews are drawn on the phone. |
 | Ingest | Writes the upload to a temporary name, fsyncs it, then renames it into the job folder, then records the job. |
-| Store | One SQLite table for state. The file bytes stay on disk. |
+| Store | One SQLite table for state. The file bytes stay on disk. Files are kept by name, not by a spoken code. A queue that also has unused visit columns from an earlier layout is still opened; those columns are left in place. A queue from a still newer layout is refused. |
 | Converter | One worker. PDF is checked and copied. Photos become an A4 PDF. Word goes through LibreOffice, then that process exits. |
 | Print | Builds the exact PDF (chosen pages, repeated per copy) and hands it to CUPS. |
 | Watch | Follows that one CUPS job until CUPS is done with it. Sleeps only while a job is actually printing. |
@@ -39,13 +39,13 @@ Two clicks cannot both print the same file: the status change happens in one SQL
 
 ## Who can see what
 
-The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page. Any other address answers that the page isn't available. Customers get back a short number and nothing else: no list, no download, no other people's files. `GET /shop` returns the wifi name they already joined, and not the password. The counter page is under `/admin`, so a phone cannot open it. The number still identifies the file on the counter. The phone confirms receipt instead of asking the customer to read a number out.
+The process listens on the shop network so phones can upload. Admin routes answer only when the connection comes from the laptop itself (`127.0.0.1` or `::1`). Forwarded-for headers are ignored. There is no API docs page. Any other address answers that the page isn't available. Customers get back that the file arrived, and nothing else: no list, no download, no other people's files, no code to read out. `GET /shop` returns the wifi name they already joined, and not the password. The counter page is under `/admin`, so a phone cannot open it. Files on the counter are named by the file itself. The phone confirms receipt.
 
 ## How a customer opens the page
 
 The shop computer is the hotspot. It does not answer for other websites, and joining the wifi does not open a page on the phone. `scripts/start-shop` prints a code in that window, with the address under it, usually `http://10.42.0.1:8088/`. The customer joins the wifi, then scans the code or types the address. The phone's own browser opens the send page.
 
-The code is drawn in black on white, two rows to a character, so a dark window can still be scanned and the squares stay about square. High error correction is used, because a photo of a screen loses a few squares. If the window is too narrow to draw it, the address is still printed. The wifi name and password are in that same window and on the counter.
+The code is drawn in black on white, two rows to a character, so a dark window can still be scanned and the squares stay about square. High error correction is used, because a photo of a screen loses a few squares. If the window is too narrow to draw it, the address is still printed. The wifi name and password are in that same window.
 
 ## Power cuts and disk
 
@@ -65,6 +65,6 @@ If the queue says the printer is off or unplugged, the file is not submitted. Se
 
 `scripts/open-counter` only opens the counter again, if that window was closed. It does not start a second copy.
 
-`./shopkeeperpanel` is a separate small program for looking at the counter while changing it. It serves the counter's own files and fills them with sample files held in memory. It does not start the shop, talk to the printer, or touch wifi. Saving those files updates the open page. Closing it leaves a running shop alone.
+`./shopkeeperpanel` is a small local server for changing the counter page while you watch it update. It serves the counter's HTML, CSS, and JavaScript from disk, and forwards everything else to the real printO on the shop port—jobs, previews, print, remove, printer status, and live updates. If printO is not running, it starts that process without wifi. It listens on another port so it can sit beside a running shop. Sample files in memory exist only for automated tests.
 
 At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter is not started there. The preview on the counter is grey because the MF3010 prints black and white.

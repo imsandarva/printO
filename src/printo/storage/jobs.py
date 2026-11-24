@@ -1,6 +1,5 @@
 """The queue. Status changes happen inside one write transaction, or they don't happen."""
 
-import secrets
 import sqlite3
 from collections.abc import Iterable
 
@@ -12,7 +11,6 @@ from printo.errors import UserError
 from printo.messages import arrived, try_again, validation
 from printo.storage.database import Database
 
-_CODE = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _FIELDS = frozenset({
     "message", "failure_stage", "page_count", "pages_spec", "copies", "cups_job_id", "delete_after",
 })
@@ -101,27 +99,19 @@ class JobStore:
     def _insert_once(self, job_id: str, original_name: str, kind: str, source_ext: str, byte_size: int) -> Job:
         moment = stamp(self.clock.now())
         with self.db.transaction() as conn:
-            code = self._fresh_code(conn)
             conn.execute(
                 """INSERT INTO jobs (
-                    id, public_code, original_name, kind, source_ext, status, failure_stage, message,
+                    id, original_name, kind, source_ext, status, failure_stage, message,
                     byte_size, page_count, pages_spec, copies, cups_job_id, created_at, updated_at, delete_after
-                ) VALUES (?, ?, ?, ?, ?, 'received', NULL, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL)""",
-                (job_id, code, display_name(original_name), kind, source_ext, arrived(), byte_size, moment, moment),
+                ) VALUES (?, ?, ?, ?, 'received', NULL, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL)""",
+                (job_id, display_name(original_name), kind, source_ext, arrived(), byte_size, moment, moment),
             )
             return _job(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
-
-    def _fresh_code(self, conn: sqlite3.Connection) -> str:
-        for _ in range(8):
-            code = "".join(secrets.choice(_CODE) for _ in range(4))
-            if conn.execute("SELECT 1 FROM jobs WHERE public_code = ?", (code,)).fetchone() is None:
-                return code
-        raise UserError(try_again(), 503)
 
 
 def _job(row: sqlite3.Row) -> Job:
     return Job(
-        id=row["id"], public_code=row["public_code"], original_name=row["original_name"], kind=row["kind"],
+        id=row["id"], original_name=row["original_name"], kind=row["kind"],
         source_ext=row["source_ext"], status=row["status"], failure_stage=row["failure_stage"], message=row["message"],
         byte_size=row["byte_size"], page_count=row["page_count"], pages_spec=row["pages_spec"], copies=row["copies"],
         cups_job_id=row["cups_job_id"], created_at=row["created_at"], updated_at=row["updated_at"],

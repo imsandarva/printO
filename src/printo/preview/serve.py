@@ -11,6 +11,7 @@ from pathlib import Path
 from printo.preview.feed import Hub
 from printo.preview.files import watched
 from printo.preview.http import Handler
+from printo.preview.proxy import ProxyDesk
 from printo.preview.scene import Scene
 from printo.preview.watch import watch
 
@@ -23,8 +24,8 @@ class PreviewServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], scene: Scene, hub: Hub) -> None:
-        self.scene = scene
+    def __init__(self, address: tuple[str, int], desk: Scene | ProxyDesk, hub: Hub) -> None:
+        self.desk = desk
         self.hub = hub
         super().__init__(address, Handler)
 
@@ -48,16 +49,17 @@ class Preview:
             return
         self._closed = True
         self._stop.set()
-        self.server.scene.close()
+        self.server.desk.close()
         self.server.shutdown()
         self.server.server_close()
         self._watcher.join(timeout=1)
 
 
-def start(port: int = 0, delay: float = 0.9) -> Preview:
+def start(port: int = 0, delay: float = 0.9, *, sample: bool = False, shop_port: int | None = None) -> Preview:
     stop = threading.Event()
     hub = Hub()
-    server = PreviewServer((HOST, port), Scene(hub.publish, delay=delay), hub)
+    desk: Scene | ProxyDesk = Scene(hub.publish, delay=delay) if sample else ProxyDesk(_need_shop_port(shop_port))
+    server = PreviewServer((HOST, port), desk, hub)
     threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.2}, name="counter-preview", daemon=True).start()
     watcher = threading.Thread(target=_watch, args=(hub, stop), name="counter-watch", daemon=True)
     watcher.start()
@@ -108,6 +110,12 @@ def already_running(port: int) -> bool:
     except (OSError, ValueError, urllib.error.URLError):
         return False
     return body.get("preview") is True
+
+
+def _need_shop_port(shop_port: int | None) -> int:
+    if shop_port is None:
+        raise ValueError("shop_port is required unless sample is true")
+    return shop_port
 
 
 def _watch(hub: Hub, stop: threading.Event) -> None:

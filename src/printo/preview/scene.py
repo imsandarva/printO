@@ -131,22 +131,22 @@ class Scene:
 def _samples() -> list[Job]:
     # Newest first is decided when the list is read. The times only have to be in the right order.
     return [
-        _job("1", "K7M2", "School admission form.pdf", PDF, ".pdf", READY, ready(), pages=4, ago=20),
-        _job("2", "M4P8", "Passport photo.jpg", IMAGE, ".jpg", READY, ready(), pages=1, ago=8 * 60),
-        _job("3", "Q2L9", "Rent receipt.pdf", PDF, ".pdf", PRINTING, printing(), pages=2, ago=14 * 60),
-        _job("4", "H8C3", "Notes from class.docx", OFFICE, ".docx", CONVERTING, preparing(), ago=20 * 60),
-        _job("5", "B1N6", "Scan from the counter.pdf", PDF, ".pdf", RECEIVED, arrived(), ago=28 * 60),
-        _job("6", "T5W4", "Letter to the ward office.doc", OFFICE, ".doc", FAILED, office_failed(), failure=STAGE_CONVERT, ago=45 * 60),
-        _job("7", "R9D2", "Photocopy of the citizenship certificate application.pdf", PDF, ".pdf", FAILED, rejected(), pages=3, failure=STAGE_PRINT, ago=2 * 3600),
-        _job("8", "A3K1", "Homework.pdf", PDF, ".pdf", DONE, sent(), pages=2, spec="1-2", copies=2, ago=5 * 3600),
-        _job("9", "C6E7", "Old scan.pdf", PDF, ".pdf", FAILED, convert_failed(), failure=STAGE_CONVERT, ago=6 * 3600),
+        _job("1", "School admission form.pdf", PDF, ".pdf", READY, ready(), pages=4, ago=20),
+        _job("2", "Passport photo.jpg", IMAGE, ".jpg", READY, ready(), pages=1, ago=8 * 60),
+        _job("3", "Rent receipt.pdf", PDF, ".pdf", PRINTING, printing(), pages=2, ago=14 * 60),
+        _job("4", "Notes from class.docx", OFFICE, ".docx", CONVERTING, preparing(), ago=20 * 60),
+        _job("5", "Scan from the counter.pdf", PDF, ".pdf", RECEIVED, arrived(), ago=28 * 60),
+        _job("6", "Letter to the ward office.doc", OFFICE, ".doc", FAILED, office_failed(), failure=STAGE_CONVERT, ago=45 * 60),
+        _job("7", "Photocopy of the citizenship certificate application.pdf", PDF, ".pdf", FAILED, rejected(), pages=3, failure=STAGE_PRINT, ago=2 * 3600),
+        _job("8", "Homework.pdf", PDF, ".pdf", DONE, sent(), pages=2, spec="1-2", copies=2, ago=5 * 3600),
+        _job("9", "Old scan.pdf", PDF, ".pdf", FAILED, convert_failed(), failure=STAGE_CONVERT, ago=6 * 3600),
     ]
 
 
-def _job(number: str, code: str, name: str, kind: str, ext: str, status: str, message: str, pages: int | None = None, spec: str | None = None, copies: int | None = None, failure: str | None = None, ago: float = 0) -> Job:
+def _job(number: str, name: str, kind: str, ext: str, status: str, message: str, pages: int | None = None, spec: str | None = None, copies: int | None = None, failure: str | None = None, ago: float = 0) -> Job:
     moment = stamp(datetime.now(timezone.utc) - timedelta(seconds=ago))
     return Job(
-        id=f"{int(number):032x}", public_code=code, original_name=name, kind=kind, source_ext=ext, status=status,
+        id=f"{int(number):032x}", original_name=name, kind=kind, source_ext=ext, status=status,
         failure_stage=failure, message=message, byte_size=48_000, page_count=pages, pages_spec=spec or ("all" if pages else None),
         copies=copies or (1 if pages else None), cups_job_id=None, created_at=moment, updated_at=moment, delete_after=None,
     )

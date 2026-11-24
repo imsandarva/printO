@@ -52,7 +52,7 @@ def _drop_broken(shop: Shop) -> None:
     for job in shop.jobs.all():
         if shop.files.source_exists(job):
             continue
-        log.warning("dropped an unfinished file %s", job.public_code)
+        log.warning("dropped an unfinished file %s", job.original_name)
         shop.files.remove_job(job.id)
         shop.jobs.delete(job.id)
 

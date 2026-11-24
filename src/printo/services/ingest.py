@@ -43,7 +43,7 @@ class Ingest:
                 partial.unlink(missing_ok=True)
         self.converter.enqueue(job.id)
         self.events.publish_job(job)
-        log.info("received %s (%s, %s bytes)", job.public_code, job.kind, job.byte_size)
+        log.info("received %s (%s, %s bytes)", job.original_name, job.kind, job.byte_size)
         return job
 
     def _commit(self, partial: Path, filename: str, kind: str, ext: str, size: int) -> Job:
