@@ -440,7 +440,8 @@ body { height: 100dvh; overflow: hidden; }
 
 /* The sheet, and a slim bar just beside it when there is more than one page. */
 .sheet-frame {
-  --sheet: 0.70707;
+  /* A4, portrait, 210mm by 297mm. The sheet does not follow the shape of the file. */
+  --sheet: 0.7070707071;
   --bar: 24px;
   --bar-gap: 12px;
   position: relative;
@@ -534,6 +535,8 @@ body { height: 100dvh; overflow: hidden; }
 .sheet {
   position: relative;
   width: 100%;
+  aspect-ratio: var(--sheet);
+  box-sizing: border-box;
   background: #fff;
   /* A hairline. Just enough for the sheet to sit apart from the desk. */
   border: 1px solid rgba(26, 23, 20, 0.12);
@@ -553,7 +556,7 @@ body { height: 100dvh; overflow: hidden; }
 /* The drawn page shrinks on the compositor. The sheet itself does not move or get redrawn. */
 .preview.fitted .sheet canvas { transform: scale(var(--fit)); }
 
-.preview { --sheet: 0.70707; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.preview { --sheet: 0.7070707071; display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 
 .fit {
   display: flex;

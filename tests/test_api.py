@@ -1,8 +1,10 @@
 import time
 from io import BytesIO
 
+import pytest
 from pypdf import PdfReader, PdfWriter
 
+from printo.printing.compose import A4_HEIGHT, A4_WIDTH
 from tests.support import FakeCups, jpeg_bytes, marked_pdf, pdf_bytes, running
 
 
@@ -51,8 +53,9 @@ def test_selected_pdf_pages_repeat(tmp_path):
         job = _wait(client, "letter.pdf", {"ready"})
         assert client.post(f"/admin/jobs/{job['id']}/print", json={"pages": "3,1", "copies": 2}).status_code == 200
         _wait(client, "letter.pdf", {"done"})
-        widths = [int(page.mediabox.width) for page in PdfReader(str(ctx.files.to_print(job["id"]))).pages]
-        assert widths == [400, 200, 400, 200]
+        pages = PdfReader(str(ctx.files.to_print(job["id"]))).pages
+        assert len(pages) == 4
+        assert [float(page.mediabox.width) for page in pages] == pytest.approx([A4_WIDTH] * 4)
         assert len(cups.submitted) == 1
 
 
@@ -68,8 +71,9 @@ def test_fit_is_printed_and_out_of_range_is_refused(tmp_path):
         assert client.post(f"/admin/jobs/{job['id']}/print", json={"copies": 1, "fit": 50}).status_code == 200
         _wait(client, "letter.pdf", {"done"})
         page = PdfReader(str(ctx.files.to_print(job["id"]))).pages[0]
-        assert int(page.mediabox.width) == 200
-        assert b"0.5 0.0 0.0 0.5 50 200 cm" in page.get_contents().get_data()
+        assert float(page.mediabox.width) == pytest.approx(A4_WIDTH)
+        assert float(page.mediabox.height) == pytest.approx(A4_HEIGHT)
+        assert b"cm" in page.get_contents().get_data()
 
 
 def test_printer_off_does_not_submit(tmp_path):

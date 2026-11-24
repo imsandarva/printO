@@ -1,4 +1,5 @@
 /* The sheet on the desk. Drawn here, so the browser's PDF window never frames it.
+   The sheet is always A4, portrait, the paper that prints. A page keeps its own shape and sits in the middle.
    The phone keeps the viewer; this page uses that same copy.
    A page choice only changes which sheets are on the desk. The file stays open. */
 
@@ -27,7 +28,7 @@ export function showSheets(slot, id, bytes, copy) {
     id, open: true, mark: 1, doc: null, tasks: [], observer: null, resize: null, hold: null, root: null,
     fit: clampFit(copy.fit), onFit: copy.onFit || null, caption: copy.caption, fail: copy.fail,
     pages: copy.pages ? copy.pages.slice() : null, pool: new Map(), stack: null, scroller: null, frame: null,
-    ratio: 0, shown: null, gen: 0, veil: null, timer: 0, running: false, again: false,
+    shown: null, gen: 0, veil: null, timer: 0, running: false, again: false,
   };
   live = view;
   read(view, slot, bytes);
@@ -82,25 +83,20 @@ function openDocument(bytes) {
   return pdfjs.getDocument({ data: bytes.slice(), disableAutoFetch: true, disableStream: true, isEvalSupported: false, useSystemFonts: true }).promise;
 }
 
-async function place(view, slot) {
-  const first = await view.doc.getPage(1);
-  if (!view.open) { first.cleanup(); return; }
-  const ratio = ratioOf(first);
-  first.cleanup();
+function place(view, slot) {
   if (!current(view, slot)) return;
   const scroller = el("div", { class: "sheet-page", attrs: { role: "region", "aria-label": "Pages" } });
   const stack = el("div", { class: "sheet-stack" });
   scroller.append(stack);
   if (!current(view, slot)) return;
   const held = holdPages(scroller);
-  const preview = column(held.frame, ratio, view);
+  const preview = column(held.frame, view);
   if (!current(view, slot)) { held.close(); return; }
   view.hold = held;
   view.root = preview;
   view.frame = held.frame;
   view.scroller = scroller;
   view.stack = stack;
-  view.ratio = ratio;
   slot.replaceChildren(preview);
   matchPaper(view, scroller);
   if (!view.open) return;
@@ -111,10 +107,8 @@ async function place(view, slot) {
   requestAnimationFrame(() => drawVisible(view, scroller, stack));
 }
 
-function column(frame, ratio, view) {
+function column(frame, view) {
   const preview = el("div", { class: "preview" });
-  preview.style.setProperty("--sheet", String(ratio));
-  frame.style.setProperty("--sheet", String(ratio));
   preview.append(frame);
   if (view.onFit) preview.append(sizeControl(view.fit, (exact, shown) => onSize(view, exact, shown)));
   if (view.caption) preview.append(el("p", { class: "caption", text: view.caption }));
@@ -142,15 +136,9 @@ function applyScale(node, fit) {
   node.classList.add("fitted");
 }
 
-function ratioOf(page) {
-  const box = page.getViewport({ scale: 1 });
-  return box.width / box.height;
-}
-
-function blank(number, ratio) {
+function blank(number) {
   const sheet = el("div", { class: "sheet" });
   sheet.dataset.page = String(number);
-  sheet.style.aspectRatio = String(ratio);
   sheet.append(el("canvas"));
   return sheet;
 }
@@ -246,7 +234,7 @@ function sheetFor(view, number) {
   const key = String(number);
   const found = view.pool.get(key);
   if (found) return found;
-  const sheet = blank(number, view.ratio);
+  const sheet = blank(number);
   view.pool.set(key, sheet);
   return sheet;
 }
@@ -385,23 +373,40 @@ async function draw(view, sheet) {
   }
 }
 
+/* The sheet is A4. The page keeps its shape and sits in the middle; the rest of the sheet stays white. */
 function paint(sheet, page) {
+  const frame = frameOf(sheet);
   const natural = page.getViewport({ scale: 1 });
-  const ratio = natural.width / natural.height;
-  if (Math.abs(parseFloat(sheet.style.aspectRatio) - ratio) > 0.01) sheet.style.aspectRatio = String(ratio);
-  const width = sheet.clientWidth;
-  if (!width) return null;
-  const viewport = page.getViewport({ scale: width / natural.width });
-  const canvas = sheet.querySelector("canvas");
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.max(1, Math.floor(viewport.width * dpr));
-  canvas.height = Math.max(1, Math.floor(viewport.height * dpr));
-  const context = canvas.getContext("2d", { alpha: false });
-  context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, viewport.width, viewport.height);
-  return page.render({ canvasContext: context, viewport });
+  if (!frame || !natural.width || !natural.height) return null;
+  const viewport = page.getViewport({ scale: fitScale(frame, natural) });
+  const canvas = prepare(sheet, frame);
+  return page.render({ canvasContext: canvas.getContext("2d", { alpha: false }), viewport, transform: shift(frame, viewport) });
 }
+
+function frameOf(sheet) {
+  const width = sheet.clientWidth;
+  const height = sheet.clientHeight;
+  return width && height ? { width, height } : null;
+}
+
+function fitScale(frame, natural) { return Math.min(frame.width / natural.width, frame.height / natural.height); }
+
+function prepare(sheet, frame) {
+  const canvas = sheet.querySelector("canvas");
+  const dpr = pixels();
+  canvas.width = Math.max(1, Math.floor(frame.width * dpr));
+  canvas.height = Math.max(1, Math.floor(frame.height * dpr));
+  return canvas;
+}
+
+function shift(frame, viewport) {
+  const dpr = pixels();
+  const dx = (frame.width - viewport.width) / 2;
+  const dy = (frame.height - viewport.height) / 2;
+  return [dpr, 0, 0, dpr, dx * dpr, dy * dpr];
+}
+
+function pixels() { return Math.min(window.devicePixelRatio || 1, 2); }
 
 function drawing(view, sheet, mark) { return view.open && sheet.dataset.drawing === mark; }
 
