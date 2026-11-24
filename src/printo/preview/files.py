@@ -1,5 +1,6 @@
 """The counter's real files. They are read from disk on each request, so a save is what you see."""
 
+import re
 from pathlib import Path
 
 _WEB = Path(__file__).resolve().parents[1] / "web"
@@ -15,6 +16,7 @@ _PAGE_HEADERS = {
     ),
 }
 _ASSET_HEADERS = {"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"}
+_MODULE = re.compile(r"^[A-Za-z0-9._-]+\.js$")
 _ASSETS = {
     "/admin/c/counter.css": (_WEB / "counter" / "app.css", "text/css; charset=utf-8"),
     "/admin/c/counter.js": (_WEB / "counter" / "app.js", "text/javascript; charset=utf-8"),
@@ -43,7 +45,11 @@ function restyle() {
 
 
 def watched() -> list[Path]:
-    return [_PAGE, _WEB / "counter" / "app.css", _WEB / "counter" / "app.js", _WEB / "common.css", _WEB / "mark.svg"]
+    counter = _WEB / "counter"
+    found = [counter / "index.html", _WEB / "common.css", _WEB / "mark.svg"]
+    found.extend(sorted(counter.glob("*.js")))
+    found.extend(sorted(counter.glob("*.css")))
+    return found
 
 
 def page_headers() -> dict[str, str]:
@@ -68,13 +74,16 @@ def asset(path: str) -> tuple[bytes, str] | None:
     if path == "/admin/c/preview.js":
         return _PREVIEW_JS, "text/javascript; charset=utf-8"
     found = _ASSETS.get(path)
-    if found is None:
-        return None
-    file, media = found
-    raw = _read(file)
-    if raw is None:
-        return None
-    return raw, media
+    if found is not None:
+        file, media = found
+        raw = _read(file)
+        return None if raw is None else (raw, media)
+    name = path.removeprefix("/admin/c/")
+    if path.startswith("/admin/c/") and _MODULE.fullmatch(name):
+        raw = _read(_WEB / "counter" / name)
+        if raw is not None:
+            return raw, "text/javascript; charset=utf-8"
+    return None
 
 
 def _read(path: Path) -> bytes | None:

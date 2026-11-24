@@ -17,7 +17,8 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | Converter | One worker. PDF is checked and copied. Photos become an A4 PDF. Word goes through LibreOffice, then that process exits. |
 | Print | Builds the exact PDF (chosen pages, repeated per copy) and hands it to CUPS. |
 | Watch | Follows that one CUPS job until CUPS is done with it. Sleeps only while a job is actually printing. |
-| Cleanup | Deletes old files. Printed files go after 2 hours, others after 24. |
+
+Sent files stay until someone at the counter removes them. Nothing is deleted because it was printed, or because a few hours or days have passed. A half-written upload is still dropped the next time the shop starts, because it never became a file.
 
 Idle, the process is waiting: no timer walks the queue, and LibreOffice is not running.
 

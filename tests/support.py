@@ -77,7 +77,6 @@ def running(tmp_path, cups: FakeCups | None = None, client_host: str = "127.0.0.
     cups = cups or FakeCups()
     values = dict(
         print_poll_seconds=0.05, print_missing_grace_seconds=0.2, print_give_up_seconds=30,
-        cleanup_interval_seconds=86400,
     )
     values.update(overrides)
     settings = replace(default_settings(tmp_path / "data"), **values)

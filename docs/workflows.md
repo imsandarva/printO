@@ -42,7 +42,7 @@ The file then moves `received → converting → ready` on its own. Failures sta
 
 All of these refuse any connection that is not from the laptop itself. A phone gets "This page isn't available."
 
-The counter screen puts the file list on the left, the print controls beside it, and the page preview on the right.
+The counter screen puts the file list on the left, the print controls beside it, and the page preview on the right. Files are grouped by the year, then the month, then the day they were sent, newest first. Today’s year, month, and day are open. Older ones are closed until someone opens them. A closed day with something still to print shows a small mark, so it is not easy to miss.
 
 | Request | What it does |
 | --- | --- |
@@ -68,8 +68,8 @@ Printing a `done` job sends it again. That is the reprint. The printer being off
 
 `./shopkeeperpanel` opens the same counter with the same files already in the shop. It does not turn on the hotspot. If printO is not running, it starts only that part in the background. Leave that window open while you change the page; saving updates what you see. Press Ctrl+C when you are done looking.
 
-## After hours
+## Keeping files
 
-Printed files are deleted about 2 hours later. Files that were never sent, and failed ones, are deleted after about 24 hours. Nothing is deleted while it is still being prepared or is in the printer queue. A file removed by hand is deleted immediately.
+A file stays until someone presses Remove. Nothing is thrown away because it was printed, or because a day has passed. Remove still deletes that one file immediately, and cancels the printer job if one was sent.
 
 If the laptop loses power, the next start picks up whole files, prepares anything that was mid-conversion, and asks CUPS about anything that was mid-print. It will not call a job done just because the process died after sending it, unless CUPS still has that job as completed.

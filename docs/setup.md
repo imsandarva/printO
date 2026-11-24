@@ -55,8 +55,6 @@ A `printo.toml` in the working directory overrides the defaults. Environment var
 | `PRINTO_MIN_FREE_BYTES` | 536870912 | Refuse uploads below this free space, plus the max upload |
 | `PRINTO_MAX_SHEETS` | 400 | Most pages in one file, and most sheets in one print (pages × copies) |
 | `PRINTO_MAX_COPIES` | 20 | |
-| `PRINTO_PRINTED_KEEP_HOURS` | 2 | |
-| `PRINTO_UNPRINTED_KEEP_HOURS` | 24 | |
 | `PRINTO_OFFICE_TIMEOUT` | 120 | Seconds before LibreOffice is killed |
 
 Example `printo.toml`:

@@ -22,6 +22,7 @@ class Job:
     cups_job_id: str | None
     created_at: str
     updated_at: str
+    # Left from when files were removed on a timer. Always cleared. Never used to delete a file.
     delete_after: str | None
 
 

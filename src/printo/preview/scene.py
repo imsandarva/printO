@@ -140,6 +140,10 @@ def _samples() -> list[Job]:
         _job("7", "Photocopy of the citizenship certificate application.pdf", PDF, ".pdf", FAILED, rejected(), pages=3, failure=STAGE_PRINT, ago=2 * 3600),
         _job("8", "Homework.pdf", PDF, ".pdf", DONE, sent(), pages=2, spec="1-2", copies=2, ago=5 * 3600),
         _job("9", "Old scan.pdf", PDF, ".pdf", FAILED, convert_failed(), failure=STAGE_CONVERT, ago=6 * 3600),
+        _job("10", "Bank statement.pdf", PDF, ".pdf", DONE, sent(), pages=3, ago=4 * 86400),
+        _job("11", "Invitation.pdf", PDF, ".pdf", DONE, sent(), pages=1, ago=4 * 86400 + 3600),
+        _job("12", "Electricity bill.pdf", PDF, ".pdf", DONE, sent(), pages=2, ago=40 * 86400),
+        _job("13", "Old admission form.pdf", PDF, ".pdf", READY, ready(), pages=2, ago=400 * 86400),
     ]
 
 

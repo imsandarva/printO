@@ -1,3 +1,5 @@
+"""Sent files stay. An old removal time, from a build that deleted on a timer, is forgotten and the file is kept."""
+
 from datetime import datetime, timedelta, timezone
 
 from printo.clock import stamp
@@ -14,22 +16,26 @@ class ManualClock:
         return self.moment
 
 
-def test_old_finished_files_go_and_a_live_print_stays(tmp_path):
+def test_files_stay_and_old_removal_times_are_forgotten(tmp_path):
     clock = ManualClock()
     ctx = build_context(default_settings(tmp_path / "data"), cups=FakeCups(), clock=clock)
     try:
-        past = stamp(clock.now() - timedelta(hours=5))
-        future = stamp(clock.now() + timedelta(hours=10))
-        old = _job(ctx, "a" * 32, "old.pdf", "done", past)
-        fresh = _job(ctx, "b" * 32, "fresh.pdf", "ready", future)
-        live = _job(ctx, "c" * 32, "live.pdf", "printing", past)
-        ctx.cleanup.sweep()
-        assert ctx.jobs.get(old) is None
-        assert ctx.jobs.get(fresh) is not None
-        assert ctx.jobs.get(live) is not None
-        assert not ctx.files.job_dir(old).exists()
+        past = stamp(clock.now() - timedelta(days=30))
+        job_id = _job(ctx, "a" * 32, "old.pdf", "done", past)
+        folder = ctx.files.job_dir(job_id)
+        folder.mkdir(parents=True)
+        (folder / "document.pdf").write_bytes(b"%PDF")
+        assert ctx.jobs.get(job_id) is not None
+        assert not hasattr(ctx, "cleanup")
     finally:
         ctx.db.close()
+    again = build_context(default_settings(tmp_path / "data"), cups=FakeCups(), clock=clock)
+    try:
+        job = again.jobs.get("a" * 32)
+        assert job is not None and job.delete_after is None and job.original_name == "old.pdf"
+        assert (again.files.job_dir("a" * 32) / "document.pdf").read_bytes() == b"%PDF"
+    finally:
+        again.db.close()
 
 
 def _job(ctx, job_id: str, name: str, status: str, delete_after: str) -> str:

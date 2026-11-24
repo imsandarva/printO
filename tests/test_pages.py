@@ -34,6 +34,8 @@ def test_counter_page_is_served_on_the_laptop(tmp_path):
         assert "default-src 'self'" in page.headers["content-security-policy"]
         script = client.get("/admin/c/counter.js")
         assert script.status_code == 200 and "Print" in script.text
+        dates = client.get("/admin/c/dates.js")
+        assert dates.status_code == 200 and "Today" in dates.text
         assert client.get("/c/customer.css").status_code == 200
         assert client.get("/c/nope.css").status_code == 404
         assert client.get("/favicon.svg").headers["content-type"].startswith("image/svg")

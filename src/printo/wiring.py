@@ -8,7 +8,6 @@ from printo.convert.office import Office
 from printo.convert.worker import Converter
 from printo.printing.cups import Cups, PrinterPort
 from printo.printing.watch import PrintWatch
-from printo.services.cleanup import Cleanup
 from printo.services.events import Events
 from printo.services.ingest import Ingest
 from printo.services.limits import Limits
@@ -32,7 +31,6 @@ class Context:
     watch: PrintWatch
     printing: PrintService
     ingest: Ingest
-    cleanup: Cleanup
     limits: Limits
 
 
@@ -53,5 +51,4 @@ def build_context(settings: Settings, cups: PrinterPort | None = None, clock: Cl
         converter=converter, watch=watch, limits=limits,
         printing=PrintService(settings, jobs, files, printer, events, watch),
         ingest=Ingest(settings, jobs, files, limits, converter, events),
-        cleanup=Cleanup(settings, jobs, files, events, clock),
     )

@@ -1,11 +1,15 @@
 /* The counter. The live stream is only a nudge; the job list is what we show.
    The preview is grey because this printer is black and white. */
 
+import { el } from "./dom.js";
+import { paintQueue, setOpen } from "./queue.js";
+
 const COPY_LIMIT = 20;
 const state = {
   jobs: [],
   seen: new Set(),
   fresh: new Map(),
+  folds: { shut: new Set(), forced: new Set() },
   drafts: {},
   previews: {},
   selected: null,
@@ -147,35 +151,16 @@ function render() {
 }
 
 function renderQueue() {
-  const queue = document.getElementById("queue");
-  if (!queue) return;
-  const top = queue.scrollTop;
-  const waiting = state.jobs.filter((job) => job.status !== "done");
-  const earlier = state.jobs.filter((job) => job.status === "done");
-  queue.replaceChildren();
-  const waitingNode = group("Waiting", waiting);
-  const earlierNode = group("Earlier", earlier);
-  if (waitingNode) queue.append(waitingNode);
-  if (earlierNode) queue.append(earlierNode);
-  queue.scrollTop = top;
+  paintQueue(document.getElementById("queue"), {
+    jobs: state.jobs, selected: state.selected, folds: state.folds, fresh: isFresh, onSelect: select, onToggle: toggleFold,
+  });
 }
 
-function group(title, jobs) {
-  if (!jobs.length) return null;
-  const section = el("section", { class: "group" });
-  section.append(el("h2", { text: title }));
-  for (const job of jobs) section.append(card(job));
-  return section;
-}
-
-function card(job) {
-  const classes = ["card", job.id === state.selected ? "on" : "", isFresh(job.id) ? "fresh" : ""].filter(Boolean).join(" ");
-  const button = el("button", { class: classes, attrs: { "aria-pressed": job.id === state.selected ? "true" : "false" }, on: { click: () => select(job.id) } });
-  const top = el("div", { class: "card-top" });
-  top.append(el("span", { class: "num", text: job.name || "Untitled", attrs: { title: job.name || "" } }), el("span", { class: "when", text: ago(job.created_at) }));
-  const label = el("span", { class: "label", text: job.label || "", attrs: { "data-status": job.status || "" } });
-  button.append(top, label);
-  return button;
+function toggleFold(id, open) {
+  const next = !open;
+  if (next) { state.folds.forced.add(id); state.folds.shut.delete(id); }
+  else { state.folds.shut.add(id); state.folds.forced.delete(id); }
+  if (!setOpen(document.getElementById("queue"), id, next)) renderQueue();
 }
 
 function isFresh(id) {
@@ -441,16 +426,6 @@ function renderPrinter() {
   if (text.textContent !== message) text.textContent = message;
 }
 
-function ago(iso) {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "";
-  const seconds = Math.max(0, (Date.now() - then) / 1000);
-  if (seconds < 45) return "Just now";
-  if (seconds < 3600) return Math.round(seconds / 60) + " min ago";
-  if (seconds < 86400) return Math.round(seconds / 3600) + " hr ago";
-  return "Earlier";
-}
-
 async function readJSON(url) {
   const response = await fetch(url);
   return response.json();
@@ -491,18 +466,6 @@ function tone(freq, when, duration) {
   osc.connect(gain).connect(audioCtx.destination);
   osc.start(when);
   osc.stop(when + duration + 0.02);
-}
-
-function el(tag, props) {
-  const node = document.createElement(tag);
-  const options = props || {};
-  if (options.class) node.className = options.class;
-  if (options.text != null) node.textContent = options.text;
-  if (options.attrs) for (const [key, value] of Object.entries(options.attrs)) if (value != null) node.setAttribute(key, value);
-  if (options.disabled) node.disabled = true;
-  if (options.on) for (const [key, fn] of Object.entries(options.on)) node.addEventListener(key, fn);
-  if (tag === "button") node.type = "button";
-  return node;
 }
 
 boot();

@@ -4,7 +4,6 @@ import asyncio
 import logging
 import queue
 
-from printo.clock import after
 from printo.config import Settings
 from printo.convert.office import Office
 from printo.convert.prepare import prepare
@@ -87,7 +86,7 @@ class Converter:
             return
         done = self.jobs.transition(
             job.id, expect={CONVERTING}, status=READY, page_count=prepared.page_count,
-            message=ready(), failure_stage=None, delete_after=after(self.jobs.clock, self.settings.unprinted_keep_hours),
+            message=ready(), failure_stage=None, delete_after=None,
         )
         if done is not None:
             log.info("ready %s (%s pages)", done.original_name, done.page_count)
@@ -96,7 +95,7 @@ class Converter:
     def _fail(self, job_id: str, message: str) -> None:
         failed = self.jobs.transition(
             job_id, expect={CONVERTING}, status=FAILED, failure_stage=STAGE_CONVERT, message=message,
-            delete_after=after(self.jobs.clock, self.settings.unprinted_keep_hours),
+            delete_after=None,
         )
         if failed is not None:
             log.info("prepare failed %s", failed.original_name)

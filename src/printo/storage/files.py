@@ -2,7 +2,6 @@
 
 import shutil
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 from printo.domain.job import ID_RE, Job
@@ -75,14 +74,6 @@ class Files:
     def drop_partials(self) -> None:
         self._unlink(self.partials.glob("*.partial") if self.partials.exists() else [])
         self._unlink(self.jobs.glob("*/*partial") if self.jobs.exists() else [])
-
-    def drop_old_partials(self, older_than: datetime) -> None:
-        if not self.partials.exists():
-            return
-        for path in self.partials.glob("*.partial"):
-            modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
-            if modified < older_than:
-                path.unlink(missing_ok=True)
 
     def _unlink(self, paths: object) -> None:
         for path in paths:  # type: ignore[union-attr]

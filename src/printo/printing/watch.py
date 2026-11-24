@@ -58,5 +58,5 @@ class PrintWatch:
                 continue
             if decision == "failed" and outcome == "active":
                 await asyncio.to_thread(self.cups.cancel, job.cups_job_id)
-            settle(self.jobs, self.events, self.jobs.clock, self.settings, job_id, decision, outcome)
+            settle(self.jobs, self.events, job_id, decision, outcome)
             return

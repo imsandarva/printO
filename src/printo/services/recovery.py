@@ -72,4 +72,4 @@ def _recover_print(shop: Shop, job: Job) -> None:
 
 
 def _settle(shop: Shop, job_id: str, decision: str, outcome: str) -> None:
-    settle(shop.jobs, shop.events, shop.jobs.clock, shop.settings, job_id, decision, outcome)
+    settle(shop.jobs, shop.events, job_id, decision, outcome)

@@ -24,6 +24,8 @@ def test_counter_opens_with_sample_files():
         assert "preview.js" not in Path("src/printo/web/counter/index.html").read_text(encoding="utf-8")
         style, _, css = _open(preview.url.replace("/admin/", "/admin/c/counter.css"))
         assert style == 200 and b".ticket" in css
+        dates = _open(preview.url.replace("/admin/", "/admin/c/dates.js"))
+        assert dates[0] == 200 and b"Today" in dates[2]
         assert _open(preview.url.replace("/admin/", "/"))[0] == 404
         jobs = _json(_open(f"{preview.url}jobs"))
         assert jobs["ok"] is True

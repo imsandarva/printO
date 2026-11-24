@@ -87,6 +87,10 @@ class Database:
         _drop_code(conn)
         if version < _KNOWN:
             conn.execute(f"PRAGMA user_version = {_KNOWN}")
+        # An older build planned to delete files on its own. Nothing does that now, so forget those times.
+        info = list(conn.execute("PRAGMA table_info(jobs)"))
+        if any(row[1] == "delete_after" for row in info):
+            conn.execute("UPDATE jobs SET delete_after = NULL WHERE delete_after IS NOT NULL")
 
     def _require_intact(self) -> None:
         row = self._require().execute("PRAGMA quick_check").fetchone()

@@ -1,6 +1,6 @@
-"""Time helpers. Tests pass their own clock so cleanup does not depend on the wall clock."""
+"""Time helpers. Tests pass their own clock so a moment can be pinned."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Protocol
 
 
@@ -16,7 +16,3 @@ class SystemClock:
 def stamp(moment: datetime) -> str:
     # Microseconds keep two updates in the same second distinct, and ISO order matches time order.
     return moment.astimezone(timezone.utc).isoformat(timespec="microseconds")
-
-
-def after(clock: Clock, hours: float) -> str:
-    return stamp(clock.now() + timedelta(hours=hours))

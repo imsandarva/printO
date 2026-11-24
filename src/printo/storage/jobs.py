@@ -47,14 +47,6 @@ class JobStore:
     def all(self) -> list[Job]:
         return self.matching(None)
 
-    def due(self, now_iso: str) -> list[Job]:
-        rows = self.db.query(
-            "SELECT * FROM jobs WHERE delete_after IS NOT NULL AND delete_after <= ? "
-            "AND status IN ('ready', 'done', 'failed') ORDER BY delete_after",
-            (now_iso,),
-        )
-        return [_job(row) for row in rows]
-
     def transition(self, job_id: str, expect: Iterable[str], status: str, **fields: object) -> Job | None:
         if set(fields) - _FIELDS:
             raise RuntimeError(f"unknown job fields: {sorted(set(fields) - _FIELDS)}")
@@ -76,18 +68,6 @@ class JobStore:
             if cursor.rowcount != 1:
                 return None
             return _job(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
-
-    def take_expired(self, job_id: str, now_iso: str) -> Job | None:
-        """Delete the row only if it is still old and not printing. The caller then removes the files."""
-        with self.db.transaction() as conn:
-            row = conn.execute(
-                "SELECT * FROM jobs WHERE id = ? AND delete_after IS NOT NULL AND delete_after <= ? AND status IN ('ready', 'done', 'failed')",
-                (job_id, now_iso),
-            ).fetchone()
-            if row is None:
-                return None
-            conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
-            return _job(row)
 
     def delete(self, job_id: str) -> bool:
         if not ID_RE.fullmatch(job_id or ""):

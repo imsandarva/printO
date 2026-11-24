@@ -71,7 +71,12 @@ def counter_page() -> FileResponse:
 
 @router.get("/admin/c/{name}")
 def counter_asset(name: str) -> FileResponse:
-    return _known(_COUNTER, name)
+    if name in _COUNTER:
+        return _known(_COUNTER, name)
+    # Modules the counter imports. Not a general file host.
+    if ".." not in name and _MODULE.fullmatch(name) and _MODULE_TYPES.get(Path(name).suffix):
+        return _file(f"counter/{name}", _MODULE_TYPES[Path(name).suffix], _ASSET)
+    raise HTTPException(404)
 
 
 def _customer_html(boot: dict) -> str:

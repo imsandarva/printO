@@ -17,8 +17,6 @@ _ENV = {
     "min_free_bytes": "PRINTO_MIN_FREE_BYTES",
     "max_sheets": "PRINTO_MAX_SHEETS",
     "max_copies": "PRINTO_MAX_COPIES",
-    "printed_keep_hours": "PRINTO_PRINTED_KEEP_HOURS",
-    "unprinted_keep_hours": "PRINTO_UNPRINTED_KEEP_HOURS",
     "office_timeout_seconds": "PRINTO_OFFICE_TIMEOUT",
     "print_poll_seconds": "PRINTO_PRINT_POLL_SECONDS",
     "print_give_up_seconds": "PRINTO_PRINT_GIVE_UP",
@@ -26,8 +24,6 @@ _ENV = {
     "uploads_per_ip": "PRINTO_UPLOADS_PER_IP",
     "uploads_global": "PRINTO_UPLOADS_GLOBAL",
     "upload_window_seconds": "PRINTO_UPLOAD_WINDOW",
-    "cleanup_interval_seconds": "PRINTO_CLEANUP_INTERVAL",
-    "partial_max_age_seconds": "PRINTO_PARTIAL_MAX_AGE",
     "soffice_bin": "PRINTO_SOFFICE",
 }
 
@@ -42,8 +38,6 @@ class Settings:
     min_free_bytes: int
     max_sheets: int
     max_copies: int
-    printed_keep_hours: float
-    unprinted_keep_hours: float
     office_timeout_seconds: int
     print_poll_seconds: float
     print_give_up_seconds: float
@@ -51,8 +45,6 @@ class Settings:
     uploads_per_ip: int
     uploads_global: int
     upload_window_seconds: int
-    cleanup_interval_seconds: int
-    partial_max_age_seconds: int
     sse_heartbeat_seconds: float
     # Admin is accepted only from the laptop itself. This is not configurable on purpose:
     # opening it to the hotspot would let a customer see everyone else's files.
@@ -73,8 +65,6 @@ def default_settings(data_dir: Path | None = None) -> Settings:
         min_free_bytes=512 * 1024 * 1024,
         max_sheets=400,
         max_copies=20,
-        printed_keep_hours=2,
-        unprinted_keep_hours=24,
         office_timeout_seconds=120,
         print_poll_seconds=2,
         print_give_up_seconds=1200,
@@ -82,8 +72,6 @@ def default_settings(data_dir: Path | None = None) -> Settings:
         uploads_per_ip=30,
         uploads_global=60,
         upload_window_seconds=600,
-        cleanup_interval_seconds=900,
-        partial_max_age_seconds=3600,
         sse_heartbeat_seconds=20,
         admin_hosts=("127.0.0.1", "::1", "::ffff:127.0.0.1"),
         soffice_bin="soffice",
@@ -141,8 +129,6 @@ def _overlay(settings: Settings, file_values: dict, env: object) -> Settings:
             min_free_bytes=int(values["min_free_bytes"]),
             max_sheets=int(values["max_sheets"]),
             max_copies=int(values["max_copies"]),
-            printed_keep_hours=float(values["printed_keep_hours"]),
-            unprinted_keep_hours=float(values["unprinted_keep_hours"]),
             office_timeout_seconds=int(values["office_timeout_seconds"]),
             print_poll_seconds=float(values["print_poll_seconds"]),
             print_give_up_seconds=float(values["print_give_up_seconds"]),
@@ -150,8 +136,6 @@ def _overlay(settings: Settings, file_values: dict, env: object) -> Settings:
             uploads_per_ip=int(values["uploads_per_ip"]),
             uploads_global=int(values["uploads_global"]),
             upload_window_seconds=int(values["upload_window_seconds"]),
-            cleanup_interval_seconds=int(values["cleanup_interval_seconds"]),
-            partial_max_age_seconds=int(values["partial_max_age_seconds"]),
             soffice_bin=str(values["soffice_bin"]).strip() or "soffice",
         )
     except (TypeError, ValueError):
@@ -171,8 +155,6 @@ def _require_sane(settings: Settings) -> Settings:
     _positive("free space reserve", settings.min_free_bytes)
     _positive("max sheets", settings.max_sheets)
     _positive("max copies", settings.max_copies)
-    if settings.printed_keep_hours <= 0 or settings.unprinted_keep_hours <= 0:
-        _bad("how long files are kept")
     if settings.office_timeout_seconds < 5 or settings.print_give_up_seconds < 5:
         _bad("a timeout")
     if settings.print_poll_seconds <= 0 or settings.print_missing_grace_seconds <= 0:
@@ -180,7 +162,6 @@ def _require_sane(settings: Settings) -> Settings:
     _positive("uploads per phone", settings.uploads_per_ip)
     _positive("uploads overall", settings.uploads_global)
     _positive("upload window", settings.upload_window_seconds)
-    _positive("cleanup interval", settings.cleanup_interval_seconds)
     return settings
 
 

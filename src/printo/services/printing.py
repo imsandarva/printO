@@ -3,7 +3,6 @@
 import asyncio
 import logging
 
-from printo.clock import after
 from printo.config import Settings
 from printo.convert.pdf_doc import page_count
 from printo.domain.job import Job
@@ -98,7 +97,7 @@ class PrintService:
     def _fail(self, job_id: str, message: str) -> None:
         failed = self.jobs.transition(
             job_id, expect={PRINTING}, status=FAILED, failure_stage=STAGE_PRINT, message=message,
-            delete_after=after(self.jobs.clock, self.settings.unprinted_keep_hours),
+            delete_after=None,
         )
         if failed is not None:
             self.events.publish_job(failed)
