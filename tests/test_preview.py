@@ -23,7 +23,14 @@ def test_counter_opens_with_sample_files():
         assert "default-src 'self'" in headers["Content-Security-Policy"]
         assert "preview.js" not in Path("src/printo/web/counter/index.html").read_text(encoding="utf-8")
         style, _, css = _open(preview.url.replace("/admin/", "/admin/c/counter.css"))
-        assert style == 200 and b".ticket" in css
+        assert style == 200 and b".ticket" in css and b".sheet-stack" in css and b".sheet-bar" in css and b"iframe" not in css
+        bar = _open(preview.url.replace("/admin/", "/admin/c/bar.js"))
+        assert bar[0] == 200 and b"holdPages" in bar[2]
+        sheets = _open(preview.url.replace("/admin/", "/admin/c/sheets.js"))
+        assert sheets[0] == 200 and b"showSheets" in sheets[2] and b"iframe" not in sheets[2]
+        viewer = _open(preview.url.replace("/admin/", "/c/pdf.min.mjs"))
+        assert viewer[0] == 200 and b"getDocument" in viewer[2]
+        assert _open(preview.url.replace("/admin/", "/c/pdf.worker.min.mjs"))[0] == 200
         dates = _open(preview.url.replace("/admin/", "/admin/c/dates.js"))
         assert dates[0] == 200 and b"Today" in dates[2]
         assert _open(preview.url.replace("/admin/", "/"))[0] == 404

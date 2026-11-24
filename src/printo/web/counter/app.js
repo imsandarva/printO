@@ -5,6 +5,7 @@ import { el } from "./dom.js";
 import { trashIcon } from "./icons.js";
 import { clampPage, paintPages, readPages, writePages } from "./pages.js";
 import { paintQueue, setOpen } from "./queue.js";
+import { closeSheets, showSheets } from "./sheets.js";
 import { paintAsk, paintBin } from "./trash.js";
 
 const COPY_LIMIT = 20;
@@ -131,8 +132,6 @@ function dropLocal(id) {
 }
 
 function forget(id) {
-  const url = state.previews[id];
-  if (url) URL.revokeObjectURL(url);
   delete state.previews[id];
   delete state.drafts[id];
   state.fresh.delete(id);
@@ -280,13 +279,14 @@ function renderIntro() {
 function renderPaper() {
   const slot = document.getElementById("paper");
   if (state.view === "trash" && state.picking) {
-    if (slot.dataset.key !== "off") { slot.dataset.key = "off"; slot.hidden = true; slot.replaceChildren(); }
+    if (slot.dataset.key !== "off") { closeSheets(); slot.dataset.key = "off"; slot.hidden = true; slot.replaceChildren(); }
     return;
   }
   const job = current();
   const key = job && job.page_count ? job.id : "";
   if (slot.dataset.key === key) return;
   slot.dataset.key = key;
+  closeSheets();
   if (!key) { slot.hidden = true; slot.replaceChildren(); return; }
   slot.hidden = false;
   slot.replaceChildren(el("p", { class: "quiet", text: "Opening the pages…" }));
@@ -294,40 +294,28 @@ function renderPaper() {
 }
 
 function resetPaper() {
+  closeSheets();
   const slot = document.getElementById("paper");
   // Drop the marker. An empty one already means this file has no pages, so it cannot also mean the page should be drawn again.
   if (slot) delete slot.dataset.key;
 }
 
 async function showPreview(job) {
+  const slot = document.getElementById("paper");
+  const copy = { caption: state.view === "trash" ? "" : "The printer is black and white. This is how the page will look.", fail: "The pages aren't ready to look at yet." };
   const cached = state.previews[job.id];
-  if (cached) { mountFrame(job.id, cached); return; }
+  if (cached) { showSheets(slot, job.id, cached, copy); return; }
   try {
     const response = await fetch("/admin/jobs/" + job.id + "/file");
     if (!response.ok || state.selected !== job.id) return;
-    const url = URL.createObjectURL(await response.blob());
-    for (const [id, old] of Object.entries(state.previews)) { URL.revokeObjectURL(old); delete state.previews[id]; }
-    if (state.selected !== job.id) { URL.revokeObjectURL(url); return; }
-    state.previews[job.id] = url;
-    mountFrame(job.id, url);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (state.selected !== job.id) return;
+    for (const id of Object.keys(state.previews)) delete state.previews[id];
+    state.previews[job.id] = bytes;
+    showSheets(slot, job.id, bytes, copy);
   } catch {
-    const slot = document.getElementById("paper");
-    if (slot && state.selected === job.id) slot.replaceChildren(el("p", { class: "quiet", text: "The pages aren't ready to look at yet." }));
+    if (slot && state.selected === job.id) slot.replaceChildren(el("p", { class: "quiet", text: copy.fail }));
   }
-}
-
-function mountFrame(id, url) {
-  const slot = document.getElementById("paper");
-  if (!slot || slot.dataset.key !== id) return;
-  const page = el("div", { class: "sheet-page" });
-  const frame = document.createElement("iframe");
-  frame.title = "Pages";
-  // Hide the viewer's own bar so the page looks like paper, not a second app.
-  frame.src = url + "#toolbar=0&navpanes=0&view=Fit&zoom=page-fit";
-  page.append(frame);
-  const nodes = [page];
-  if (state.view !== "trash") nodes.push(el("p", { class: "caption", text: "The printer is black and white. This is how the page will look." }));
-  slot.replaceChildren(...nodes);
 }
 
 function renderControls() {

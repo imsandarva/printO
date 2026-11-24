@@ -11,7 +11,7 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | Piece | What it owns |
 | --- | --- |
 | HTTP | `POST /upload` for phones. `/admin/...` for the laptop only. |
-| Screens | The phone page and the counter. Plain files served by this process, so there is no second program and no build step to keep in memory. The phone page is one screen: choose, review, send, and see that the shop received the files. Previews are drawn on the phone. |
+| Screens | The phone page and the counter. Plain files served by this process, so there is no second program and no build step to keep in memory. The phone page is one screen: choose, review, send, and see that the shop received the files. Previews are drawn on the page itself, on the phone and on the counter, so the browser's PDF window never frames a sheet. |
 | Ingest | Writes the upload to a temporary name, fsyncs it, then renames it into the job folder, then records the job. |
 | Store | One SQLite table for state. The file bytes stay on disk. Files are kept by name, not by a spoken code. A queue that also has unused visit columns from an earlier layout is still opened; those columns are left in place. A queue from a still newer layout is refused. |
 | Converter | One worker. PDF is checked and copied. Photos become an A4 PDF. Word goes through LibreOffice, then that process exits. |

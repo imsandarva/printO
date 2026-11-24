@@ -24,6 +24,11 @@ _ASSETS = {
     "/favicon.svg": (_WEB / "mark.svg", "image/svg+xml"),
     "/favicon.ico": (_WEB / "mark.svg", "image/svg+xml"),
 }
+# The phone already keeps the viewer. The counter draws with the same files, so there is one copy.
+_VIEWER = {
+    "/c/pdf.min.mjs": (_WEB / "customer" / "pdf.min.mjs", "text/javascript; charset=utf-8"),
+    "/c/pdf.worker.min.mjs": (_WEB / "customer" / "pdf.worker.min.mjs", "text/javascript; charset=utf-8"),
+}
 # Not a file in the counter folder, so the shop never serves it and never reloads itself.
 _HOOK = b'<script src="/admin/c/preview.js"></script>'
 _PREVIEW_JS = b"""\
@@ -73,7 +78,7 @@ def counter_page() -> bytes | None:
 def asset(path: str) -> tuple[bytes, str] | None:
     if path == "/admin/c/preview.js":
         return _PREVIEW_JS, "text/javascript; charset=utf-8"
-    found = _ASSETS.get(path)
+    found = _ASSETS.get(path) or _VIEWER.get(path)
     if found is not None:
         file, media = found
         raw = _read(file)

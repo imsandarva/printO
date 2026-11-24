@@ -438,27 +438,103 @@ body { height: 100dvh; overflow: hidden; }
 
 #paper { margin: 18px 0 0; max-width: none; min-width: 0; }
 
+/* The sheet, and a slim bar just beside it when there is more than one page. */
+.sheet-frame {
+  --sheet: 0.70707;
+  --bar: 24px;
+  --bar-gap: 12px;
+  display: flex;
+  align-items: stretch;
+  gap: var(--bar-gap);
+  width: min(100%, calc((100dvh - 230px) * var(--sheet)));
+  max-height: calc(100dvh - 230px);
+}
+
+.sheet-frame.scrolling { width: min(100%, calc((100dvh - 230px) * var(--sheet) + var(--bar-gap) + var(--bar))); }
+
+/* One sheet high. Further sheets scroll inside, on the desk, with no frame of their own. */
 .sheet-page {
   position: relative;
-  width: min(100%, calc((100dvh - 230px) * 210 / 297));
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   max-height: calc(100dvh - 230px);
-  aspect-ratio: 210 / 297;
-  background: #fff;
+  aspect-ratio: var(--sheet);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  background: transparent;
+  border: 0;
   border-radius: 0;
-  overflow: hidden;
-  /* A hairline is enough for the page to separate from the desk. */
-  border: 1px solid rgba(26, 23, 20, 0.12);
   box-shadow: none;
 }
 
-/* The viewer's own dark rim and scrollbar sit on the page edge. Shift them out of sight. */
-.sheet-page iframe {
-  display: block;
-  width: calc(100% + 22px);
-  height: calc(100% + 8px);
-  margin: -4px 0 0 -4px;
-  border: 0;
+.sheet-page::-webkit-scrollbar { width: 0; height: 0; }
+
+/* Beside the sheet, not on it. The faint line is the track; the darker dash is the part you hold. */
+.sheet-bar {
+  display: none;
+  position: relative;
+  flex: none;
+  width: var(--bar);
+  margin: 10px 0;
+  touch-action: none;
+  user-select: none;
+  cursor: pointer;
+}
+
+.sheet-frame.scrolling .sheet-bar { display: block; }
+
+.sheet-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 5px;
+  border-radius: 99px;
+  background: rgba(26, 23, 20, 0.14);
+  transform: translateX(-50%);
+}
+
+.sheet-thumb {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 10px;
+  border-radius: 99px;
+  background: rgba(26, 23, 20, 0.62);
+  transform: translate3d(-50%, 0, 0);
+  cursor: grab;
+}
+
+.sheet-bar:hover::before,
+.sheet-bar.holding::before { background: rgba(26, 23, 20, 0.2); }
+
+.sheet-bar:hover .sheet-thumb,
+.sheet-bar.holding .sheet-thumb { background: rgba(26, 23, 20, 0.82); }
+
+.sheet-bar.holding,
+.sheet-bar.holding .sheet-thumb { cursor: grabbing; }
+
+.sheet-stack { display: flex; flex-direction: column; gap: 10px; }
+
+.sheet {
+  position: relative;
+  width: 100%;
   background: #fff;
+  /* A hairline. Just enough for the sheet to sit apart from the desk. */
+  border: 1px solid rgba(26, 23, 20, 0.12);
+  overflow: hidden;
+}
+
+.sheet canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
   filter: grayscale(1);
 }
 
@@ -747,7 +823,9 @@ body { height: 100dvh; overflow: hidden; }
 
 @media (max-width: 980px) {
   .desk { grid-template-columns: 1fr; }
-  .sheet-page { height: auto; width: min(100%, 340px); }
+  .sheet-frame { width: min(100%, 340px); }
+  .sheet-frame.scrolling { width: min(100%, calc(340px + var(--bar-gap) + var(--bar))); }
+  .sheet-page { height: auto; width: auto; }
 }
 
 @media (max-width: 860px) {
