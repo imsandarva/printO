@@ -37,8 +37,8 @@ class ProxyDesk:
     def file(self, job_id: str) -> bytes:
         return _bytes(self, "GET", f"jobs/{job_id}/file")
 
-    def print_job(self, job_id: str, pages: str, copies: int) -> dict:
-        return _json(self, "POST", f"jobs/{job_id}/print", {"pages": pages, "copies": copies})["job"]
+    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100) -> dict:
+        return _json(self, "POST", f"jobs/{job_id}/print", {"pages": pages, "copies": copies, "fit": fit})["job"]
 
     def retry(self, job_id: str) -> dict:
         return _json(self, "POST", f"jobs/{job_id}/retry", {})["job"]

@@ -6,7 +6,7 @@ The customer joins the shop wifi. The name and password are in the window where 
 
 They choose their files, check them, and send them. The page confirms when the shop computer has them. Printing still happens here.
 
-On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and type off to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there, under their own names. They choose pages and how many copies, then press Print. The page is shown in grey because the printer is black and white.
+On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and type off to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there, under their own names. They choose pages, how many copies, and how large it sits on the page, then press Print. The page is shown in grey because the printer is black and white.
 
 Try again prepares a file that failed. Print again sends one that already went, or one the printer refused. Delete moves it to Trash. A second print of a file that is already printing is refused. New files play a short sound after the counter has been clicked once, which is a limit of the browser, and the list updates on its own.
 
@@ -42,7 +42,7 @@ The file then moves `received → converting → ready` on its own. Failures sta
 
 All of these refuse any connection that is not from the laptop itself. A phone gets "This page isn't available."
 
-The counter screen puts the file list on the left, the print controls beside it, and the page preview on the right. The preview is the sheet itself: white, with a hairline edge, and the desk showing between one sheet and the next. It is grey because this printer is black and white. When there is more than one page, a scrollbar sits just to the right of the sheet, with a little room around it, and moves through the pages. The sheet itself stays clear. Files are grouped by the year, then the month, then the day they were sent, newest first. Today’s year, month, and day are open. Older ones are closed until someone opens them. A closed day with something still to print shows a small mark, so it is not easy to miss. In the list, a file’s name is regular weight, a step quieter than the date above it, with the time smaller and softer on the right. A thin line sits between files in the same day, and it steps aside when a file is selected.
+The counter screen puts the file list on the left, the print controls beside it, and the page preview on the right. The preview is the sheet itself: white, with a hairline edge, and the desk showing between one sheet and the next. It is grey because this printer is black and white. Under the sheet, a slider sets how large the page sits on the paper, from 40% to 125%. 100% is the normal fit. Above that the page grows, and anything that passes the edge of the paper is left off. The preview is what prints. Smaller and larger sizes stay centered, and the page changes as the slider moves. Right and up grow it by one percent. Left and down shrink it by one percent. Print uses that same size. The line under the slider says "This is how the page will look." When there is more than one page, a scrollbar sits just to the right of the sheet, with a little room around it, and moves through the pages. The sheet itself stays clear. Files are grouped by the year, then the month, then the day they were sent, newest first. Today’s year, month, and day are open. Older ones are closed until someone opens them. A closed day with something still to print shows a small mark, so it is not easy to miss. In the list, a file’s name is regular weight, a step quieter than the date above it, with the time smaller and softer on the right. A thin line sits between files in the same day, and it steps aside when a file is selected.
 
 | Request | What it does |
 | --- | --- |
@@ -51,7 +51,7 @@ The counter screen puts the file list on the left, the print controls beside it,
 | `GET /admin/jobs` | Newest first. Optional `?status=ready`. |
 | `GET /admin/jobs/{id}` | One job. |
 | `GET /admin/jobs/{id}/file` | The prepared PDF, once it exists. |
-| `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1}`. |
+| `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1, "fit": 100}`. `fit` is optional and defaults to 100. It is a whole number from 40 to 125: how large the page sits on the sheet. 100 is the normal fit. Above that, anything past the sheet is cut off. |
 | `POST /admin/jobs/{id}/retry` | Prepare again after a conversion failure. |
 | `POST /admin/jobs/{id}/trash` | Move it to Trash. The file stays. A print that already started is cancelled. |
 | `POST /admin/jobs/{id}/restore` | Bring it back from Trash. |

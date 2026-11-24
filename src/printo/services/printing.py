@@ -5,6 +5,7 @@ import logging
 
 from printo.config import Settings
 from printo.convert.pdf_doc import page_count
+from printo.domain.fit import parse_fit
 from printo.domain.job import Job
 from printo.domain.pages import selection
 from printo.domain.status import DONE, FAILED, PRINTING, READY, STAGE_PRINT, can_print
@@ -29,20 +30,21 @@ class PrintService:
         self.events = events
         self.watch = watch
 
-    async def print_job(self, job_id: str, pages: str, copies: int) -> Job:
-        job = await asyncio.to_thread(self._submit, job_id, pages, copies)
+    async def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100) -> Job:
+        job = await asyncio.to_thread(self._submit, job_id, pages, copies, fit)
         if job.status == PRINTING and job.cups_job_id:
             self.watch.follow(job.id)
         self.events.publish_job(job)
         return job
 
-    def _submit(self, job_id: str, pages: str, copies: int) -> Job:
+    def _submit(self, job_id: str, pages: str, copies: int, fit: int) -> Job:
+        amount = parse_fit(fit)
         job = self._ready(job_id)
         indexes = selection(pages, job.page_count or 0, copies, self.settings.max_copies, self.settings.max_sheets)
         self._require_printer()
         locked = self._lock(job, pages, copies)
         try:
-            self._write(locked, indexes, copies)
+            self._write(locked, indexes, copies, amount)
             cups_id = self.cups.submit(self.files.to_print(locked.id), f"printo {locked.original_name}")
         except UserError as exc:
             self._fail(locked.id, exc.message)
@@ -87,9 +89,9 @@ class PrintService:
             raise UserError(already_printing(), 409)
         return locked
 
-    def _write(self, job: Job, indexes: list[int], copies: int) -> None:
+    def _write(self, job: Job, indexes: list[int], copies: int, fit: int) -> None:
         dest = self.files.to_print(job.id)
-        compose(self.files.document(job.id), dest, indexes, copies)
+        compose(self.files.document(job.id), dest, indexes, copies, fit)
         if page_count(dest) != len(indexes) * copies:
             raise UserError(compose_failed())
 

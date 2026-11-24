@@ -114,7 +114,7 @@ def send_jobs(handler: Handler) -> None:
 def send_print(handler: Handler, job_id: str) -> None:
     body = read_json(handler)
     pages, copies = body.get("pages", "all"), body.get("copies", 1)
-    send_json(handler, {"ok": True, "job": handler.server.desk.print_job(job_id, pages, copies)})
+    send_json(handler, {"ok": True, "job": handler.server.desk.print_job(job_id, pages, copies, body.get("fit", 100))})
 
 
 def send_printer(handler: Handler) -> None:

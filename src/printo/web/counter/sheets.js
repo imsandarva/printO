@@ -4,6 +4,7 @@
 import * as pdfjs from "/c/pdf.min.mjs";
 import { holdPages } from "./bar.js";
 import { el } from "./dom.js";
+import { clampFit, sizeControl } from "./fit.js";
 
 const WORKER = "/c/pdf.worker.min.mjs";
 const NEAR = 480;
@@ -21,7 +22,10 @@ export function closeSheets() {
 
 export function showSheets(slot, id, bytes, copy) {
   closeSheets();
-  const view = { id, open: true, mark: 1, doc: null, tasks: [], observer: null, resize: null, hold: null, caption: copy.caption, fail: copy.fail };
+  const view = {
+    id, open: true, mark: 1, doc: null, tasks: [], observer: null, resize: null, hold: null, root: null,
+    fit: clampFit(copy.fit), onFit: copy.onFit || null, caption: copy.caption, fail: copy.fail,
+  };
   live = view;
   read(view, slot, bytes);
 }
@@ -73,13 +77,46 @@ async function place(view, slot) {
   scroller.append(stack);
   if (!current(view, slot)) return;
   const held = holdPages(scroller);
-  held.frame.style.setProperty("--sheet", String(ratio));
+  const preview = column(held.frame, ratio, view);
   if (!current(view, slot)) { held.close(); return; }
   view.hold = held;
-  slot.replaceChildren(...nodes(held.frame, view.caption));
+  view.root = preview;
+  slot.replaceChildren(preview);
+  matchPaper(view, scroller);
   if (!view.open) return;
   listen(view, scroller, stack);
   requestAnimationFrame(() => drawVisible(view, scroller, stack));
+}
+
+function column(frame, ratio, view) {
+  const preview = el("div", { class: "preview" });
+  preview.style.setProperty("--sheet", String(ratio));
+  frame.style.setProperty("--sheet", String(ratio));
+  preview.append(frame);
+  if (view.onFit) preview.append(sizeControl(view.fit, (exact, shown) => onSize(view, exact, shown)));
+  if (view.caption) preview.append(el("p", { class: "caption", text: view.caption }));
+  applyScale(preview, view.fit);
+  return preview;
+}
+
+function onSize(view, exact, shown) {
+  view.fit = shown;
+  applyScale(view.root, exact);
+  view.onFit?.(shown);
+}
+
+/* Scale the already-drawn page. Redrawing it on every move would stutter. */
+function matchPaper(view, scroller) {
+  const width = scroller.clientWidth;
+  if (view.root && width) view.root.style.setProperty("--paper", width + "px");
+}
+
+function applyScale(node, fit) {
+  if (!node) return;
+  // 100 is the drawn page, left unscaled so it stays sharp. Above that, the sheet cuts off whatever passes the edge.
+  if (Math.abs(fit - 100) < 0.05) { node.classList.remove("fitted"); node.style.removeProperty("--fit"); return; }
+  node.style.setProperty("--fit", (fit / 100).toFixed(4));
+  node.classList.add("fitted");
 }
 
 function ratioOf(page) {
@@ -95,10 +132,6 @@ function blank(number, ratio) {
   return sheet;
 }
 
-function nodes(frame, caption) {
-  return caption ? [frame, el("p", { class: "caption", text: caption })] : [frame];
-}
-
 function listen(view, scroller, stack) {
   view.observer = new IntersectionObserver((entries) => {
     for (const entry of entries) if (entry.isIntersecting) draw(view, entry.target);
@@ -106,6 +139,7 @@ function listen(view, scroller, stack) {
   for (const sheet of stack.children) view.observer.observe(sheet);
   let width = scroller.clientWidth;
   view.resize = new ResizeObserver(() => {
+    matchPaper(view, scroller);
     const next = scroller.clientWidth;
     if (!next || Math.abs(next - width) < 1) return;
     width = next;

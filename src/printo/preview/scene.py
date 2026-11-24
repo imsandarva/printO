@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from printo.clock import stamp
 from printo.config import default_settings
+from printo.domain.fit import parse_fit
 from printo.domain.job import Job
 from printo.domain.kinds import IMAGE, OFFICE, PDF
 from printo.domain.pages import selection
@@ -51,7 +52,8 @@ class Scene:
             raise UserError(not_found(), 404)
         return sheet(count)
 
-    def print_job(self, job_id: str, pages: str, copies: int) -> dict:
+    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100) -> dict:
+        parse_fit(fit)
         with self._lock:
             job = self._get(job_id)
             if job.trashed_at:

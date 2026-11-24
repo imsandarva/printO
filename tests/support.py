@@ -8,6 +8,7 @@ from dataclasses import replace
 from PIL import Image
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, NameObject
 
 from printo.config import default_settings
 from printo.http.app import create_app
@@ -67,6 +68,17 @@ def pdf_bytes(widths: tuple[int, ...] = (200, 300, 400)) -> bytes:
     writer = PdfWriter()
     for width in widths:
         writer.add_blank_page(width=width, height=800)
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def marked_pdf(width: int = 200, height: int = 800) -> bytes:
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=width, height=height)
+    stream = DecodedStreamObject()
+    stream.set_data(b"0 0 m 10 10 l S")
+    page[NameObject("/Contents")] = writer._add_object(stream)
     buffer = io.BytesIO()
     writer.write(buffer)
     return buffer.getvalue()

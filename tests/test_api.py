@@ -3,7 +3,7 @@ from io import BytesIO
 
 from pypdf import PdfReader, PdfWriter
 
-from tests.support import FakeCups, jpeg_bytes, pdf_bytes, running
+from tests.support import FakeCups, jpeg_bytes, marked_pdf, pdf_bytes, running
 
 
 def _upload(client, name, data):
@@ -54,6 +54,22 @@ def test_selected_pdf_pages_repeat(tmp_path):
         widths = [int(page.mediabox.width) for page in PdfReader(str(ctx.files.to_print(job["id"]))).pages]
         assert widths == [400, 200, 400, 200]
         assert len(cups.submitted) == 1
+
+
+def test_fit_is_printed_and_out_of_range_is_refused(tmp_path):
+    with running(tmp_path) as (client, ctx, _cups):
+        assert _upload(client, "letter.pdf", marked_pdf()).status_code == 201
+        job = _wait(client, "letter.pdf", {"ready"})
+        refused = client.post(f"/admin/jobs/{job['id']}/print", json={"copies": 1, "fit": 10})
+        assert refused.status_code == 400
+        assert "40%" in refused.json()["message"]
+        too_big = client.post(f"/admin/jobs/{job['id']}/print", json={"copies": 1, "fit": 126})
+        assert too_big.status_code == 400
+        assert client.post(f"/admin/jobs/{job['id']}/print", json={"copies": 1, "fit": 50}).status_code == 200
+        _wait(client, "letter.pdf", {"done"})
+        page = PdfReader(str(ctx.files.to_print(job["id"]))).pages[0]
+        assert int(page.mediabox.width) == 200
+        assert b"0.5 0.0 0.0 0.5 50 200 cm" in page.get_contents().get_data()
 
 
 def test_printer_off_does_not_submit(tmp_path):

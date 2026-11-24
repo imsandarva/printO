@@ -17,6 +17,7 @@ router = APIRouter(prefix="/admin")
 class PrintBody(BaseModel):
     pages: str = "all"
     copies: int = 1
+    fit: int = 100
 
 
 @router.get("/health")
@@ -53,7 +54,7 @@ def download(request: Request, job_id: str) -> FileResponse:
 
 @router.post("/jobs/{job_id}/print")
 async def print_job(request: Request, job_id: str, body: PrintBody) -> object:
-    job = await request.app.state.ctx.printing.print_job(job_id, body.pages, body.copies)
+    job = await request.app.state.ctx.printing.print_job(job_id, body.pages, body.copies, body.fit)
     return succeed({"job": present(job)})
 
 

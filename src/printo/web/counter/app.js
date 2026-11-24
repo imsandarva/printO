@@ -2,6 +2,7 @@
    The preview is grey because this printer is black and white. */
 
 import { el } from "./dom.js";
+import { clampFit } from "./fit.js";
 import { trashIcon } from "./icons.js";
 import { clampPage, paintPages, readPages, writePages } from "./pages.js";
 import { paintQueue, setOpen } from "./queue.js";
@@ -189,7 +190,7 @@ function sameDraft(draft, job, count) {
 
 function freshDraft(job, count) {
   const read = readPages(job.pages, count);
-  const draft = { choice: read.choice, from: read.from, to: read.to, count, copies: job.copies || 1, dirty: false, focus: "" };
+  const draft = { choice: read.choice, from: read.from, to: read.to, count, copies: job.copies || 1, fit: 100, dirty: false, focus: "" };
   draft.pages = writePages(draft);
   return draft;
 }
@@ -302,7 +303,7 @@ function resetPaper() {
 
 async function showPreview(job) {
   const slot = document.getElementById("paper");
-  const copy = { caption: state.view === "trash" ? "" : "The printer is black and white. This is how the page will look.", fail: "The pages aren't ready to look at yet." };
+  const copy = previewCopy(job);
   const cached = state.previews[job.id];
   if (cached) { showSheets(slot, job.id, cached, copy); return; }
   try {
@@ -316,6 +317,18 @@ async function showPreview(job) {
   } catch {
     if (slot && state.selected === job.id) slot.replaceChildren(el("p", { class: "quiet", text: copy.fail }));
   }
+}
+
+function previewCopy(job) {
+  const fail = "The pages aren't ready to look at yet.";
+  if (state.view === "trash") return { caption: "", fail };
+  const draft = draftOf(job);
+  return { caption: "This is how the page will look.", fail, fit: draft.fit, onFit: (fit) => rememberFit(job.id, fit) };
+}
+
+function rememberFit(id, fit) {
+  const draft = state.drafts[id];
+  if (draft) draft.fit = fit;
 }
 
 function renderControls() {
@@ -445,7 +458,7 @@ async function printCurrent() {
   state.note = "";
   render();
   try {
-    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/print", { pages, copies: draft.copies });
+    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/print", { pages, copies: draft.copies, fit: clampFit(draft.fit) });
     if (!body.ok) state.note = body.message || "Please try that again in a moment.";
     else { draft.dirty = false; onJob(body.job); loadPrinter(); return; }
   } catch {

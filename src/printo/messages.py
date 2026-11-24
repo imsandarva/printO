@@ -104,6 +104,10 @@ def bad_copies(limit: int) -> str:
     return f"Please choose between 1 and {limit} copies."
 
 
+def bad_fit(low: int, high: int) -> str:
+    return f"Please keep the size between {low}% and {high}%."
+
+
 def printer_ready() -> str:
     return "The printer is ready."
 
