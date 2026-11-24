@@ -24,7 +24,7 @@ Send moves the files together, a few at a time. Each row says whether it is wait
 
 `POST /upload` with one form field, `file`. The page calls this once per file.
 
-Accepted: PDF, Word (`.doc`, `.docx`), OpenDocument text, Rich Text, and photos (JPEG, PNG, WEBP, GIF, BMP, TIFF, HEIC). The type is read from the bytes, not from the filename. GIF uses the first frame only, so an animation is not printed as a stack of frames.
+Accepted: PDF, Word (`.doc`, `.docx`), OpenDocument text, Rich Text, and photos (JPEG, PNG, WEBP, GIF, BMP, TIFF, HEIC). The type is read from the bytes, not from the filename. A photo is one page, including a phone picture that also carries an HDR gain map. A multi-page TIFF still prints every sheet.
 
 ```bash
 curl -s -F "file=@/path/to/file.pdf" http://127.0.0.1:8088/upload

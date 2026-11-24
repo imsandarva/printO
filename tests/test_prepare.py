@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
 from printo.convert.images import prepare_image
@@ -57,9 +58,26 @@ def test_damaged_pdf(tmp_path):
     assert "damaged" in caught.value.message
 
 
-def test_png_with_transparency(tmp_path):
-    from PIL import Image
+def test_mpo_uses_primary_frame_only(tmp_path):
+    primary = Image.new("RGB", (400, 300), (40, 40, 40))
+    extra = Image.new("RGB", (200, 150), (10, 10, 10))
+    source = tmp_path / "phone.jpg"
+    primary.save(source, "MPO", save_all=True, append_images=[extra])
+    dest = tmp_path / "document.pdf"
+    assert prepare_image(source, dest, max_sheets=5).page_count == 1
+    assert len(PdfReader(str(dest)).pages) == 1
 
+
+def test_tiff_keeps_every_page(tmp_path):
+    first, second = Image.new("RGB", (80, 80), "white"), Image.new("RGB", (80, 80), "black")
+    source = tmp_path / "scan.tiff"
+    first.save(source, "TIFF", save_all=True, append_images=[second])
+    dest = tmp_path / "document.pdf"
+    assert prepare_image(source, dest, max_sheets=5).page_count == 2
+    assert len(PdfReader(str(dest)).pages) == 2
+
+
+def test_png_with_transparency(tmp_path):
     image = Image.new("RGBA", (30, 30), (255, 0, 0, 128))
     source = tmp_path / "a.png"
     image.save(source, "PNG")

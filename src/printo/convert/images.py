@@ -16,6 +16,8 @@ register_heif_opener()
 _DPI = 150
 _A4_MM = (210, 297)
 _MARGIN_MM = 10
+# A scan can be many sheets. A photo cannot: later frames are an HDR gain map, depth, or thumbnail.
+_STACKED = "TIFF"
 
 
 def prepare_image(source: Path, dest: Path, max_sheets: int) -> Prepared:
@@ -27,12 +29,17 @@ def prepare_image(source: Path, dest: Path, max_sheets: int) -> Prepared:
     return Prepared(page_count(dest, max_sheets))
 
 
+def _sheet_count(image: Image.Image) -> int:
+    if image.format == _STACKED:
+        return int(getattr(image, "n_frames", 1))
+    return 1
+
+
 def _frames(source: Path, max_sheets: int) -> list[Image.Image]:
     frames: list[Image.Image] = []
     try:
         with Image.open(source) as image:
-            # An animation is one frame. Printing every frame would waste a stack of paper.
-            count = 1 if image.format == "GIF" else int(getattr(image, "n_frames", 1))
+            count = _sheet_count(image)
             if count > max_sheets:
                 raise UserError(too_many_pages())
             for index in range(count):

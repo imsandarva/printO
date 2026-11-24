@@ -24,7 +24,7 @@ Idle, the process is waiting: no timer walks the queue, and LibreOffice is not r
 
 ## Why everything becomes a PDF
 
-Page counts, page ranges, copies, and the printer then share one path. A valid PDF is copied through unchanged, so fonts embedded in the file (Nepali included) are not rebuilt. Photos are placed on a white A4 page at 150 dpi, which is enough for this laser and much lighter than 300 dpi. Word and similar files are the only ones that start LibreOffice.
+Page counts, page ranges, copies, and the printer then share one path. A valid PDF is copied through unchanged, so fonts embedded in the file (Nepali included) are not rebuilt. Photos are placed on a white A4 page at 150 dpi, which is enough for this laser and much lighter than 300 dpi. A photo is one page: a later frame that is only an HDR gain map, a depth image, or a thumbnail is not printed. A multi-page TIFF still prints every sheet. Word and similar files are the only ones that start LibreOffice.
 
 LibreOffice is heavy, and it lies about success: it can exit 0 and write nothing, and two copies will fight over one profile. So it runs one at a time, with its own profile under the data folder (the shop account's fonts are still used), and the result is kept only if it is a real PDF. On a timeout the whole process group is killed.
 
