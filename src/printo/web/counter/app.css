@@ -7,23 +7,30 @@ body { height: 100dvh; overflow: hidden; }
 .top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   padding: 18px 28px 14px;
 }
 
 .printer {
+  position: fixed;
+  right: 22px;
+  bottom: 20px;
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(255, 252, 247, 0.7);
+  background: rgba(255, 252, 247, 0.94);
   border: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(255, 252, 247, 0.8) inset, 0 10px 28px rgba(40, 28, 16, 0.1);
   font-size: 0.9rem;
-  max-width: min(36rem, 70%);
+  max-width: min(36rem, calc(100vw - 44px));
+  transition: bottom 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
+
+body:has(#toast) .printer { bottom: 78px; }
 
 .printer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -998,6 +1005,7 @@ body { height: 100dvh; overflow: hidden; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .printer { transition: none; }
   .fit input[type="range"]::-webkit-slider-thumb,
   .fit input[type="range"]::-moz-range-thumb { transition: none; }
   .page-note, .page-span, .page-note .page-tally, .page-span .page-tally { transition: none; }
@@ -1006,6 +1014,8 @@ body { height: 100dvh; overflow: hidden; }
 
 @media (max-width: 860px) {
   .top { padding: 16px 16px 10px; }
+  .printer { right: 16px; bottom: 16px; }
+  body:has(#toast) .printer { bottom: 74px; }
   .main { grid-template-columns: 1fr; grid-template-rows: minmax(168px, 34vh) minmax(0, 1fr); }
   .rail { border-right: 0; border-bottom: 1px solid var(--line); }
   .queue { border-bottom: 0; }
