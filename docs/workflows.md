@@ -8,7 +8,7 @@ They choose their files, check them, and send them. The page confirms when the s
 
 On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and press Ctrl+C to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there, under their own names. They choose pages and how many copies, then press Print. The page is shown in grey because the printer is black and white.
 
-Try again prepares a file that failed. Print again sends one that already went, or one the printer refused. Remove throws it away. A second print of a file that is already printing is refused. New files play a short sound after the counter has been clicked once, which is a limit of the browser, and the list updates on its own.
+Try again prepares a file that failed. Print again sends one that already went, or one the printer refused. Delete moves it to Trash. A second print of a file that is already printing is refused. New files play a short sound after the counter has been clicked once, which is a limit of the browser, and the list updates on its own.
 
 The words on both screens are the sentences from the server.
 
@@ -53,7 +53,9 @@ The counter screen puts the file list on the left, the print controls beside it,
 | `GET /admin/jobs/{id}/file` | The prepared PDF, once it exists. |
 | `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1}`. |
 | `POST /admin/jobs/{id}/retry` | Prepare again after a conversion failure. |
-| `DELETE /admin/jobs/{id}` | Remove it. Cancels the printer job if one was sent. |
+| `POST /admin/jobs/{id}/trash` | Move it to Trash. The file stays. A print that already started is cancelled. |
+| `POST /admin/jobs/{id}/restore` | Bring it back from Trash. |
+| `DELETE /admin/jobs/{id}` | Delete it for good. Only once it is in Trash. Cancels the printer job if one is still going. |
 | `GET /admin/events` | Server-sent events. A nudge, not the record. On reconnect, load the job list again. |
 
 A job object carries `name`, `status`, `label`, `message`, `page_count`, `pages`, `copies`, `can_print`, and `can_retry`. The counter shows the file name. `label` and `message` are for a person. `status` is for the program: `received`, `converting`, `ready`, `printing`, `done`, `failed`. When a file is ready, the counter does not repeat "Ready to print." under the name.
@@ -70,6 +72,6 @@ Printing a `done` job sends it again. That is the reprint. The printer being off
 
 ## Keeping files
 
-A file stays until someone presses Remove. Nothing is thrown away because it was printed, or because a day has passed. Remove still deletes that one file immediately, and cancels the printer job if one was sent.
+A file stays until someone presses Delete. That moves it to Trash, grouped by the day it was sent, the same way as the counter. Nothing is thrown away because it was printed, or because a day has passed. From Trash, Restore puts it back. Select, then Delete, asks first; only a yes removes the file for good. If a copy had already started, the printer is asked to stop.
 
 If the laptop loses power, the next start picks up whole files, prepares anything that was mid-conversion, and asks CUPS about anything that was mid-print. It will not call a job done just because the process died after sending it, unless CUPS still has that job as completed.

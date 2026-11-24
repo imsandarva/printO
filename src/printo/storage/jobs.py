@@ -35,17 +35,33 @@ class JobStore:
         rows = self.db.query("SELECT * FROM jobs WHERE id = ?", (job_id,))
         return _job(rows[0]) if rows else None
 
-    def matching(self, status: str | None = None) -> list[Job]:
-        if status is None:
-            rows = self.db.query("SELECT * FROM jobs ORDER BY created_at DESC")
-        elif status not in ALL:
+    def matching(self, status: str | None = None, *, placed: str = "counter") -> list[Job]:
+        # counter hides Trash. trash is only Trash. all is both, so a restart can still see every file.
+        if status is not None and status not in ALL:
             raise UserError(validation())
-        else:
-            rows = self.db.query("SELECT * FROM jobs WHERE status = ? ORDER BY created_at DESC", (status,))
+        if placed not in {"counter", "trash", "all"}:
+            raise RuntimeError(f"unknown place: {placed}")
+        clauses: list[str] = []
+        params: list[object] = []
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if placed == "counter":
+            clauses.append("trashed_at IS NULL")
+        elif placed == "trash":
+            clauses.append("trashed_at IS NOT NULL")
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        rows = self.db.query(f"SELECT * FROM jobs{where} ORDER BY created_at DESC", tuple(params))
         return [_job(row) for row in rows]
 
     def all(self) -> list[Job]:
-        return self.matching(None)
+        return self.matching(None, placed="all")
+
+    def place_in_trash(self, job_id: str) -> Job | None:
+        return self._mark_trash(job_id, True)
+
+    def restore(self, job_id: str) -> Job | None:
+        return self._mark_trash(job_id, False)
 
     def transition(self, job_id: str, expect: Iterable[str], status: str, **fields: object) -> Job | None:
         if set(fields) - _FIELDS:
@@ -65,6 +81,25 @@ class JobStore:
         sql = f"UPDATE jobs SET {', '.join(assignments)} WHERE id = ? AND status IN ({marks})"
         with self.db.transaction() as conn:
             cursor = conn.execute(sql, values)
+            if cursor.rowcount != 1:
+                return None
+            return _job(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
+
+    def _mark_trash(self, job_id: str, into: bool) -> Job | None:
+        if not ID_RE.fullmatch(job_id or ""):
+            return None
+        moment = stamp(self.clock.now())
+        with self.db.transaction() as conn:
+            if into:
+                cursor = conn.execute(
+                    "UPDATE jobs SET trashed_at = ?, updated_at = ? WHERE id = ? AND trashed_at IS NULL",
+                    (moment, moment, job_id),
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE jobs SET trashed_at = NULL, updated_at = ? WHERE id = ? AND trashed_at IS NOT NULL",
+                    (moment, job_id),
+                )
             if cursor.rowcount != 1:
                 return None
             return _job(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
@@ -95,5 +130,5 @@ def _job(row: sqlite3.Row) -> Job:
         source_ext=row["source_ext"], status=row["status"], failure_stage=row["failure_stage"], message=row["message"],
         byte_size=row["byte_size"], page_count=row["page_count"], pages_spec=row["pages_spec"], copies=row["copies"],
         cups_job_id=row["cups_job_id"], created_at=row["created_at"], updated_at=row["updated_at"],
-        delete_after=row["delete_after"],
+        delete_after=row["delete_after"], trashed_at=row["trashed_at"],
     )

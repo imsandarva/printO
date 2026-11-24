@@ -1,4 +1,4 @@
-"""Print a ready file, or take one off the list. CUPS is only contacted after the row says printing."""
+"""Print a ready file. CUPS is only contacted after the row says printing."""
 
 import asyncio
 import logging
@@ -9,7 +9,7 @@ from printo.domain.job import Job
 from printo.domain.pages import selection
 from printo.domain.status import DONE, FAILED, PRINTING, READY, STAGE_PRINT, can_print
 from printo.errors import UserError
-from printo.messages import already_printing, compose_failed, not_found, not_ready, printing, removed, removed_but_printer
+from printo.messages import already_printing, compose_failed, in_trash, not_found, not_ready, printing
 from printo.printing.compose import compose
 from printo.printing.cups import PrinterPort, refuse_reason
 from printo.printing.watch import PrintWatch
@@ -35,9 +35,6 @@ class PrintService:
             self.watch.follow(job.id)
         self.events.publish_job(job)
         return job
-
-    async def cancel_job(self, job_id: str) -> str:
-        return await asyncio.to_thread(self._cancel, job_id)
 
     def _submit(self, job_id: str, pages: str, copies: int) -> Job:
         job = self._ready(job_id)
@@ -67,6 +64,8 @@ class PrintService:
         job = self.jobs.get(job_id)
         if job is None:
             raise UserError(not_found(), 404)
+        if job.trashed_at:
+            raise UserError(in_trash(), 409)
         if job.status == PRINTING:
             raise UserError(already_printing(), 409)
         if not can_print(job) or not self.files.document(job.id).is_file():
@@ -101,15 +100,3 @@ class PrintService:
         )
         if failed is not None:
             self.events.publish_job(failed)
-
-    def _cancel(self, job_id: str) -> str:
-        job = self.jobs.get(job_id)
-        if job is None:
-            raise UserError(not_found(), 404)
-        warning = bool(job.status == PRINTING and job.cups_job_id and not self.cups.cancel(job.cups_job_id))
-        if not self.jobs.delete(job.id):
-            raise UserError(not_found(), 404)
-        self.files.remove_job(job.id)
-        self.events.publish_removed(job.id)
-        log.info("removed %s", job.original_name)
-        return removed_but_printer() if warning else removed()

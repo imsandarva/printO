@@ -11,7 +11,8 @@ log = logging.getLogger("printo.db")
 
 # One table is enough: the file on disk is the document, and this row is only its state.
 # Version 2 only added visit columns this build does not read. They stay. Version 3 drops the spoken code.
-_KNOWN = 3
+# Version 4 adds Trash. A file there is hidden from the counter, and its bytes stay until deleted from Trash.
+_KNOWN = 4
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
@@ -28,7 +29,8 @@ _SCHEMA = (
         cups_job_id TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        delete_after TEXT
+        delete_after TEXT,
+        trashed_at TEXT
     )""",
     "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)",
     "CREATE INDEX IF NOT EXISTS idx_jobs_delete_after ON jobs(delete_after)",
@@ -85,6 +87,7 @@ class Database:
         for statement in _SCHEMA:
             conn.execute(statement)
         _drop_code(conn)
+        _keep_trash(conn)
         if version < _KNOWN:
             conn.execute(f"PRAGMA user_version = {_KNOWN}")
         # An older build planned to delete files on its own. Nothing does that now, so forget those times.
@@ -112,8 +115,16 @@ class Database:
 # SQLite will not drop a UNIQUE column in place, so an older queue is copied without that column.
 _CORE = (
     "id", "original_name", "kind", "source_ext", "status", "failure_stage", "message", "byte_size",
-    "page_count", "pages_spec", "copies", "cups_job_id", "created_at", "updated_at", "delete_after",
+    "page_count", "pages_spec", "copies", "cups_job_id", "created_at", "updated_at", "delete_after", "trashed_at",
 )
+
+
+def _keep_trash(conn: sqlite3.Connection) -> None:
+    # A column, not a new status, so Trash does not interrupt converting or printing.
+    info = list(conn.execute("PRAGMA table_info(jobs)"))
+    if not any(row[1] == "trashed_at" for row in info):
+        conn.execute("ALTER TABLE jobs ADD COLUMN trashed_at TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_trashed ON jobs(trashed_at)")
 
 
 def _drop_code(conn: sqlite3.Connection) -> None:

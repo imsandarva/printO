@@ -22,8 +22,13 @@ class ProxyDesk:
     def upstream_events_url(self) -> str:
         return f"{self._base}/events"
 
-    def jobs(self, status: str | None = None) -> list[dict]:
-        trail = f"?status={urllib.parse.quote(status)}" if status else ""
+    def jobs(self, status: str | None = None, *, trashed: bool = False) -> list[dict]:
+        parts: list[str] = []
+        if status:
+            parts.append("status=" + urllib.parse.quote(status))
+        if trashed:
+            parts.append("trashed=1")
+        trail = ("?" + "&".join(parts)) if parts else ""
         return _json(self, "GET", f"jobs{trail}")["jobs"]
 
     def one(self, job_id: str) -> dict:
@@ -37,6 +42,13 @@ class ProxyDesk:
 
     def retry(self, job_id: str) -> dict:
         return _json(self, "POST", f"jobs/{job_id}/retry", {})["job"]
+
+    def trash(self, job_id: str) -> dict:
+        body = _json(self, "POST", f"jobs/{job_id}/trash", {})
+        return {"message": body["message"], "job": body["job"]}
+
+    def restore(self, job_id: str) -> dict:
+        return _json(self, "POST", f"jobs/{job_id}/restore", {})["job"]
 
     def remove(self, job_id: str) -> str:
         return _json(self, "DELETE", f"jobs/{job_id}")["message"]

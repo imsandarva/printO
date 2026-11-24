@@ -10,7 +10,7 @@ from printo.convert.prepare import prepare
 from printo.domain.job import Job
 from printo.domain.status import CONVERTING, FAILED, READY, RECEIVED, STAGE_CONVERT, can_retry
 from printo.errors import UserError
-from printo.messages import convert_failed, not_found, no_retry, preparing, ready, try_again
+from printo.messages import convert_failed, in_trash, not_found, no_retry, preparing, ready, try_again
 from printo.services.events import Events
 from printo.storage.files import Files
 from printo.storage.jobs import JobStore
@@ -45,6 +45,8 @@ class Converter:
         job = self.jobs.get(job_id)
         if job is None or not self.files.source_exists(job):
             raise UserError(not_found(), 404)
+        if job.trashed_at:
+            raise UserError(in_trash(), 409)
         if not can_retry(job):
             raise UserError(no_retry(), 409)
         updated = self.jobs.transition(
@@ -68,6 +70,10 @@ class Converter:
                 log.exception("prepare loop")
 
     def _prepare_one(self, job_id: str) -> None:
+        # A file already in Trash should not spend a turn in LibreOffice.
+        current = self.jobs.get(job_id)
+        if current is None or current.trashed_at:
+            return
         job = self.jobs.transition(job_id, expect={RECEIVED}, status=CONVERTING, message=preparing(), failure_stage=None)
         if job is None:
             return

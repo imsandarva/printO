@@ -43,6 +43,12 @@ def test_counter_opens_with_sample_files():
         assert again["ok"] is False
         failed = next(job for job in jobs["jobs"] if job["can_retry"])
         assert _json(_open(f"{preview.url}jobs/{failed['id']}/retry", {}))["job"]["status"] == "converting"
+        moved = _json(_open(f"{preview.url}jobs/{failed['id']}/trash", {}, "POST"))
+        assert moved["ok"] is True and moved["message"] == "Moved to Trash."
+        assert all(job["id"] != failed["id"] for job in _json(_open(f"{preview.url}jobs"))["jobs"])
+        assert any(job["id"] == failed["id"] for job in _json(_open(f"{preview.url}jobs?trashed=1"))["jobs"])
+        blocked = _json(_open(f"{preview.url}jobs/{ready['id']}", method="DELETE"))
+        assert blocked["ok"] is False
         removed = _json(_open(f"{preview.url}jobs/{failed['id']}", method="DELETE"))
         assert removed["ok"] is True
         assert sheet(1).startswith(b"%PDF")

@@ -12,6 +12,7 @@ from printo.services.events import Events
 from printo.services.ingest import Ingest
 from printo.services.limits import Limits
 from printo.services.printing import PrintService
+from printo.services.trash import Trash
 from printo.storage.database import Database
 from printo.storage.files import Files
 from printo.storage.jobs import JobStore
@@ -30,6 +31,7 @@ class Context:
     converter: Converter
     watch: PrintWatch
     printing: PrintService
+    trash: Trash
     ingest: Ingest
     limits: Limits
 
@@ -50,5 +52,6 @@ def build_context(settings: Settings, cups: PrinterPort | None = None, clock: Cl
         settings=settings, clock=clock, db=db, jobs=jobs, files=files, events=events, cups=printer, office=office,
         converter=converter, watch=watch, limits=limits,
         printing=PrintService(settings, jobs, files, printer, events, watch),
+        trash=Trash(jobs, files, printer, events, converter),
         ingest=Ingest(settings, jobs, files, limits, converter, events),
     )

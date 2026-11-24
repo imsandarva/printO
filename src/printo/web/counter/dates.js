@@ -5,11 +5,11 @@ const MONTH = new Intl.DateTimeFormat("en", { month: "long" });
 const WEEKDAY = new Intl.DateTimeFormat("en", { weekday: "long" });
 const CLOCK = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 
-export function arrange(jobs, now) {
+export function arrange(jobs, now, waiting = true) {
   const years = new Map();
   const ordered = jobs.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   for (const job of ordered) place(years, job, slotOf(job.created_at, now));
-  return [...years.values()].sort(newerFirst).map(finishYear);
+  return [...years.values()].sort(newerFirst).map((year) => finishYear(year, waiting));
 }
 
 export function isOpen(kind, key, folds, now) {
@@ -48,24 +48,24 @@ function ensure(map, key, kind, title, spoken) {
   return node;
 }
 
-function finishYear(year) {
-  const months = [...year.kids.values()].sort(newerFirst).map(finishMonth);
+function finishYear(year, waiting) {
+  const months = [...year.kids.values()].sort(newerFirst).map((month) => finishMonth(month, waiting));
   const jobs = months.flatMap((month) => month.children.flatMap((day) => day.jobs));
-  return { ...present(year, jobs), children: months };
+  return { ...present(year, jobs, waiting), children: months };
 }
 
-function finishMonth(month) {
-  const days = [...month.kids.values()].sort(newerFirst).map((day) => ({ ...present(day, day.jobs), jobs: day.jobs }));
+function finishMonth(month, waiting) {
+  const days = [...month.kids.values()].sort(newerFirst).map((day) => ({ ...present(day, day.jobs, waiting), jobs: day.jobs }));
   const jobs = days.flatMap((day) => day.jobs);
-  return { ...present(month, jobs), children: days };
+  return { ...present(month, jobs, waiting), children: days };
 }
 
-function present(node, jobs) {
-  let waiting = 0;
-  for (const job of jobs) if (job.status !== "done") waiting += 1;
+function present(node, jobs, waiting) {
+  let held = 0;
+  if (waiting) for (const job of jobs) if (job.status !== "done") held += 1;
   return {
     id: foldId(node.kind, node.key), kind: node.kind, key: node.key, title: node.title, spoken: node.spoken,
-    dayNum: node.dayNum || "", today: Boolean(node.today), total: jobs.length, waiting,
+    dayNum: node.dayNum || "", today: Boolean(node.today), total: jobs.length, waiting: held,
   };
 }
 

@@ -2,7 +2,9 @@
    The preview is grey because this printer is black and white. */
 
 import { el } from "./dom.js";
+import { trashIcon } from "./icons.js";
 import { paintQueue, setOpen } from "./queue.js";
+import { paintAsk, paintBin } from "./trash.js";
 
 const COPY_LIMIT = 20;
 const state = {
@@ -13,18 +15,25 @@ const state = {
   drafts: {},
   previews: {},
   selected: null,
+  view: "files",
+  trash: [],
+  trashFolds: { shut: new Set(), forced: new Set() },
+  picking: false,
+  picks: new Set(),
+  ask: false,
   printer: null,
   printerLost: false,
   offline: false,
   live: false,
   working: "",
-  confirm: null,
   note: "",
   toast: "",
+  undo: "",
 };
 
 function boot() {
   document.addEventListener("pointerdown", warmSound, { passive: true });
+  document.addEventListener("keydown", onKey);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   window.setInterval(renderQueue, 30000);
   window.setInterval(loadPrinter, 8000);
@@ -47,9 +56,9 @@ function listen() {
 async function loadJobs() {
   const announce = state.live;
   try {
-    const body = await readJSON("/admin/jobs");
-    if (!body.ok || !Array.isArray(body.jobs)) throw new Error("jobs");
-    absorb(body.jobs, announce);
+    const [active, bin] = await Promise.all([readJSON("/admin/jobs"), readJSON("/admin/jobs?trashed=1")]);
+    if (!active.ok || !Array.isArray(active.jobs) || !bin.ok || !Array.isArray(bin.jobs)) throw new Error("jobs");
+    take(active.jobs, bin.jobs, announce);
     state.offline = false;
   } catch {
     state.offline = true;
@@ -68,7 +77,7 @@ async function loadPrinter() {
   renderPrinter();
 }
 
-function absorb(jobs, announce) {
+function take(jobs, bin, announce) {
   const ids = new Set();
   let arrived = false;
   for (const job of jobs) {
@@ -78,32 +87,46 @@ function absorb(jobs, announce) {
       if (announce) { arrived = true; state.fresh.set(job.id, Date.now()); }
     }
   }
+  for (const job of bin) { ids.add(job.id); state.seen.add(job.id); }
   for (const id of Array.from(state.seen)) if (!ids.has(id)) { state.seen.delete(id); forget(id); }
   state.jobs = jobs.slice();
+  state.trash = bin.slice();
+  for (const id of Array.from(state.picks)) if (!state.trash.some((job) => job.id === id)) state.picks.delete(id);
+  if (state.picking && !state.trash.length) state.picking = false;
   if (arrived) { chime(); window.setTimeout(render, 2600); }
   ensureSelection();
 }
 
 function onJob(job) {
   if (!job || !job.id) return;
-  if (job.status === "canceled") {
-    state.jobs = state.jobs.filter((item) => item.id !== job.id);
-    state.seen.delete(job.id);
-    forget(job.id);
-    ensureSelection();
-    render();
-    return;
-  }
-  const arrived = !state.seen.has(job.id);
+  if (job.status === "canceled") { dropLocal(job.id); render(); return; }
+  const bin = Boolean(job.trashed_at);
+  const list = bin ? state.trash : state.jobs;
+  const other = bin ? state.jobs : state.trash;
+  const arrived = !bin && !state.seen.has(job.id);
   state.seen.add(job.id);
-  const index = state.jobs.findIndex((item) => item.id === job.id);
-  if (index >= 0) state.jobs[index] = job;
-  else state.jobs.unshift(job);
-  state.jobs.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const stripped = other.filter((item) => item.id !== job.id);
+  if (bin) state.jobs = stripped;
+  else { state.trash = stripped; state.picks.delete(job.id); }
+  const index = list.findIndex((item) => item.id === job.id);
+  if (index >= 0) list[index] = job;
+  else list.unshift(job);
+  list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  if (!state.trash.length) state.picking = false;
   if (arrived) { state.fresh.set(job.id, Date.now()); chime(); window.setTimeout(render, 2600); }
   if (state.selected === job.id && job.status !== "ready") state.note = "";
   ensureSelection();
   render();
+}
+
+function dropLocal(id) {
+  state.jobs = state.jobs.filter((job) => job.id !== id);
+  state.trash = state.trash.filter((job) => job.id !== id);
+  state.picks.delete(id);
+  state.seen.delete(id);
+  forget(id);
+  if (!state.trash.length) state.picking = false;
+  ensureSelection();
 }
 
 function forget(id) {
@@ -116,22 +139,32 @@ function forget(id) {
 }
 
 function ensureSelection() {
-  if (state.selected && state.jobs.some((job) => job.id === state.selected)) return;
-  const waiting = state.jobs.find((job) => job.status !== "done");
-  state.selected = (waiting || state.jobs[0] || {}).id || null;
+  if (state.picking) return;
+  const jobs = listed();
+  if (state.selected && jobs.some((job) => job.id === state.selected)) return;
+  const waiting = state.view === "files" ? jobs.find((job) => job.status !== "done") : null;
+  state.selected = (waiting || jobs[0] || {}).id || null;
   resetPaper();
 }
 
 function select(id) {
+  if (state.view === "trash" && state.picking) {
+    if (state.picks.has(id)) state.picks.delete(id);
+    else state.picks.add(id);
+    state.note = "";
+    render();
+    return;
+  }
   if (state.selected === id) return;
   state.selected = id;
-  state.confirm = null;
   state.note = "";
   resetPaper();
   render();
 }
 
-function current() { return state.jobs.find((job) => job.id === state.selected) || null; }
+function listed() { return state.view === "trash" ? state.trash : state.jobs; }
+
+function current() { return listed().find((job) => job.id === state.selected) || null; }
 
 function draftOf(job) {
   const existing = state.drafts[job.id];
@@ -148,18 +181,32 @@ function render() {
   renderControls();
   renderPrinter();
   renderToast();
+  renderBin();
+  renderAsk();
 }
 
 function renderQueue() {
-  paintQueue(document.getElementById("queue"), {
-    jobs: state.jobs, selected: state.selected, folds: state.folds, fresh: isFresh, onSelect: select, onToggle: toggleFold,
+  const trash = state.view === "trash";
+  const root = document.getElementById("queue");
+  if (root) root.setAttribute("aria-label", trash ? "Trash" : "Files");
+  paintQueue(root, {
+    jobs: trash ? state.trash : state.jobs,
+    selected: state.selected,
+    folds: trash ? state.trashFolds : state.folds,
+    fresh: trash ? () => false : isFresh,
+    onSelect: select,
+    onToggle: (id, open) => toggleFold(id, open, trash),
+    picking: trash && state.picking,
+    picks: state.picks,
+    waiting: !trash,
   });
 }
 
-function toggleFold(id, open) {
+function toggleFold(id, open, trash) {
+  const folds = trash ? state.trashFolds : state.folds;
   const next = !open;
-  if (next) { state.folds.forced.add(id); state.folds.shut.delete(id); }
-  else { state.folds.shut.add(id); state.folds.forced.delete(id); }
+  if (next) { folds.forced.add(id); folds.shut.delete(id); }
+  else { folds.shut.add(id); folds.forced.delete(id); }
   if (!setOpen(document.getElementById("queue"), id, next)) renderQueue();
 }
 
@@ -170,27 +217,43 @@ function isFresh(id) {
 
 function renderIntro() {
   const intro = document.getElementById("intro");
+  if (state.view === "trash" && state.picking) {
+    const count = state.picks.size;
+    const key = "picking\n" + count;
+    if (intro.dataset.key === key) return;
+    intro.dataset.key = key;
+    const title = count === 0 ? "Select files" : count === 1 ? "1 file selected" : count + " files selected";
+    const body = count === 0 ? "Choose the files you want to delete." : "Delete will ask before they’re gone for good.";
+    intro.replaceChildren(el("h1", { class: "ticket", text: title }), el("p", { class: "quiet", text: body }));
+    return;
+  }
   const job = current();
   if (!job) {
-    const key = state.offline ? "offline" : "empty";
+    const key = (state.view === "trash" ? "trash:" : "files:") + (state.offline ? "offline" : "empty");
     if (intro.dataset.key === key) return;
     intro.dataset.key = key;
     const block = el("div", { class: "empty" });
-    block.append(el("h1", { text: "Nothing is waiting." }), el("p", { class: "quiet", text: state.offline ? "The counter lost its connection. It will try again." : "When someone sends a file, it will show up here." }));
+    if (state.view === "trash") block.append(el("h1", { text: "Trash is empty." }), el("p", { class: "quiet", text: state.offline ? "The counter lost its connection. It will try again." : "Files you delete stay here until you delete them for good." }));
+    else block.append(el("h1", { text: "Nothing is waiting." }), el("p", { class: "quiet", text: state.offline ? "The counter lost its connection. It will try again." : "When someone sends a file, it will show up here." }));
     intro.replaceChildren(block);
     return;
   }
   const showMessage = Boolean(job.message) && job.status !== "ready";
-  const key = [job.id, job.name, showMessage ? job.message : "", job.status].join("\n");
+  const key = [state.view, job.id, job.name, showMessage ? job.message : "", job.status].join("\n");
   if (intro.dataset.key === key) return;
   intro.dataset.key = key;
   const nodes = [el("h1", { class: "ticket", text: job.name || "Untitled", attrs: { title: job.name || "" } })];
+  if (state.view === "trash") nodes.push(el("p", { class: "quiet", text: "In Trash." }));
   if (showMessage) nodes.push(el("p", { class: "message", text: job.message, attrs: { "data-status": job.status || "" } }));
   intro.replaceChildren(...nodes);
 }
 
 function renderPaper() {
   const slot = document.getElementById("paper");
+  if (state.view === "trash" && state.picking) {
+    if (slot.dataset.key !== "off") { slot.dataset.key = "off"; slot.hidden = true; slot.replaceChildren(); }
+    return;
+  }
   const job = current();
   const key = job && job.page_count ? job.id : "";
   if (slot.dataset.key === key) return;
@@ -233,18 +296,21 @@ function mountFrame(id, url) {
   // Hide the viewer's own bar so the page looks like paper, not a second app.
   frame.src = url + "#toolbar=0&navpanes=0&view=Fit&zoom=page-fit";
   page.append(frame);
-  slot.replaceChildren(page, el("p", { class: "caption", text: "The printer is black and white. This is how the page will look." }));
+  const nodes = [page];
+  if (state.view !== "trash") nodes.push(el("p", { class: "caption", text: "The printer is black and white. This is how the page will look." }));
+  slot.replaceChildren(...nodes);
 }
 
 function renderControls() {
   const node = document.getElementById("controls");
+  if (state.view === "trash") { renderTrashControls(node); return; }
   const job = current();
   if (!job) {
     if (node.dataset.key !== "") { node.dataset.key = ""; node.replaceChildren(); }
     return;
   }
   const draft = draftOf(job);
-  const key = [job.id, job.status, job.can_print, job.can_retry, job.page_count, draft.copies, state.confirm === job.id, state.working, state.note].join("|");
+  const key = [job.id, job.status, job.can_print, job.can_retry, job.page_count, draft.copies, state.working, state.note].join("|");
   if (node.dataset.key === key) return;
   const typing = document.activeElement && document.activeElement.id === "pages";
   const caret = typing ? document.activeElement.selectionStart : null;
@@ -254,7 +320,7 @@ function renderControls() {
   if (job.status === "printing" || state.working === "print") node.append(el("button", { class: "go", text: "Printing…", disabled: true }));
   else if (job.can_print || job.can_retry) node.append(action(job));
   if (state.note) node.append(el("p", { class: "note", text: state.note }));
-  node.append(removeRow(job));
+  node.append(deleteRow(job));
   if (typing) restorePages(caret);
 }
 
@@ -326,13 +392,30 @@ function action(job) {
   return el("button", { class: "go", text: label, disabled: Boolean(state.working), on: { click: printCurrent } });
 }
 
-function removeRow(job) {
-  if (state.confirm === job.id) {
-    const row = el("div", { class: "confirm" });
-    row.append(el("button", { class: "danger", text: "Yes, remove it", disabled: Boolean(state.working), on: { click: () => reallyRemove(job.id) } }), el("button", { class: "texty", text: "Keep it", on: { click: () => { state.confirm = null; render(); } } }));
-    return row;
+function renderTrashControls(node) {
+  if (state.picking) {
+    if (node.dataset.key !== "picking") { node.dataset.key = "picking"; node.replaceChildren(); }
+    return;
   }
-  return el("button", { class: "texty remove", text: "Remove", on: { click: () => { state.confirm = job.id; state.note = ""; render(); } } });
+  const job = current();
+  if (!job) { if (node.dataset.key !== "") { node.dataset.key = ""; node.replaceChildren(); } return; }
+  const key = ["trash", job.id, state.working, state.note].join("|");
+  if (node.dataset.key === key) return;
+  node.dataset.key = key;
+  node.replaceChildren();
+  node.append(el("button", { class: "restore", text: state.working ? "One moment…" : "Restore", disabled: Boolean(state.working), on: { click: () => restore(job.id) } }));
+  if (state.note) node.append(el("p", { class: "note", text: state.note }));
+}
+
+function deleteRow(job) {
+  const button = el("button", {
+    class: "texty remove",
+    disabled: Boolean(state.working),
+    attrs: { "aria-label": "Delete " + (job.name || "this file") },
+    on: { click: () => moveToTrash(job.id) },
+  });
+  button.append(trashIcon(), el("span", { text: "Delete" }));
+  return button;
 }
 
 async function printCurrent() {
@@ -372,23 +455,67 @@ async function retryCurrent() {
   }
 }
 
-async function reallyRemove(id) {
+async function moveToTrash(id) {
   if (state.working) return;
-  state.working = "remove";
+  state.working = "trash";
+  state.note = "";
   render();
   try {
-    const body = await sendJSON("DELETE", "/admin/jobs/" + id);
+    const body = await sendJSON("POST", "/admin/jobs/" + id + "/trash");
     if (!body.ok) { state.note = body.message || "Please try that again in a moment."; return; }
-    if (body.message && body.message !== "Removed.") showToast(body.message);
-    state.jobs = state.jobs.filter((job) => job.id !== id);
-    state.seen.delete(id);
-    forget(id);
-    ensureSelection();
+    showToast(body.message || "Moved to Trash.", id);
+    if (body.job) onJob(body.job);
   } catch {
     state.note = "Please try that again in a moment.";
   } finally {
     state.working = "";
-    state.confirm = null;
+    render();
+  }
+}
+
+async function restore(id) {
+  if (!id || state.working) return;
+  state.working = "restore";
+  state.toast = "";
+  state.undo = "";
+  state.note = "";
+  render();
+  try {
+    const body = await sendJSON("POST", "/admin/jobs/" + id + "/restore");
+    if (!body.ok) { state.note = body.message || "Please try that again in a moment."; return; }
+    showToast(body.message || "Back at the counter.");
+    if (body.job) onJob(body.job);
+  } catch {
+    state.note = "Please try that again in a moment.";
+  } finally {
+    state.working = "";
+    render();
+  }
+}
+
+async function forgetPicked() {
+  if (state.working) return;
+  const ids = state.trash.filter((job) => state.picks.has(job.id)).map((job) => job.id);
+  if (!ids.length) { state.ask = false; render(); return; }
+  state.working = "delete";
+  render();
+  let message = "Deleted.";
+  let failed = "";
+  try {
+    for (const id of ids) {
+      const body = await sendJSON("DELETE", "/admin/jobs/" + id);
+      if (!body.ok) { failed = body.message || "Please try that again in a moment."; break; }
+      if (body.message) message = body.message;
+      dropLocal(id);
+    }
+  } catch {
+    failed = "Please try that again in a moment.";
+  } finally {
+    state.working = "";
+    state.ask = false;
+    if (failed) state.note = failed;
+    else { state.picking = false; state.picks.clear(); state.note = ""; showToast(message); }
+    ensureSelection();
     render();
   }
 }
@@ -398,19 +525,120 @@ function cleanPages(value) {
   return text || "all";
 }
 
-function showToast(message) {
+function showToast(message, undoId) {
   state.toast = message;
-  window.setTimeout(() => { if (state.toast === message) { state.toast = ""; render(); } }, 7000);
+  state.undo = undoId || "";
+  window.setTimeout(() => { if (state.toast === message) { state.toast = ""; state.undo = ""; render(); } }, 7000);
 }
 
 function renderToast() {
   let toast = document.getElementById("toast");
   if (!state.toast) { if (toast) toast.remove(); return; }
   if (!toast) {
-    toast = el("p", { class: "toast", attrs: { id: "toast", role: "status" } });
+    toast = el("div", { class: "toast", attrs: { id: "toast", role: "status" } });
     document.body.append(toast);
   }
-  toast.textContent = state.toast;
+  const key = state.toast + "\n" + state.undo;
+  if (toast.dataset.key === key) return;
+  toast.dataset.key = key;
+  toast.replaceChildren(el("span", { text: state.toast }));
+  if (state.undo) toast.append(el("button", { class: "toast-undo", text: "Undo", on: { click: () => restore(state.undo) } }));
+}
+
+function renderBin() {
+  paintBin({
+    view: state.view,
+    count: state.trash.length,
+    picking: state.picking,
+    pickCount: state.picks.size,
+    allOn: state.trash.length > 0 && state.picks.size === state.trash.length,
+    working: state.working,
+    note: state.view === "trash" && state.picking ? state.note : "",
+    onOpen: openTrash,
+    onClose: closeTrash,
+    onPick: startPicking,
+    onCancel: stopPicking,
+    onAll: toggleAll,
+    onDelete: requestDelete,
+  });
+}
+
+function renderAsk() {
+  const chosen = state.trash.filter((job) => state.picks.has(job.id));
+  const body = chosen.length === 1 ? (chosen[0].name || "This file") + " will be gone for good." : "These " + chosen.length + " files will be gone for good.";
+  paintAsk({ open: state.ask && chosen.length > 0, busy: state.working === "delete", body: body, onYes: forgetPicked, onNo: closeAsk });
+}
+
+function openTrash() {
+  if (state.view === "trash" || state.working) return;
+  state.view = "trash";
+  state.picking = false;
+  state.picks.clear();
+  state.ask = false;
+  state.note = "";
+  state.selected = null;
+  const root = document.getElementById("queue");
+  if (root) root.scrollTop = 0;
+  ensureSelection();
+  render();
+}
+
+function closeTrash() {
+  if (state.working === "delete") return;
+  state.view = "files";
+  state.picking = false;
+  state.picks.clear();
+  state.ask = false;
+  state.note = "";
+  state.selected = null;
+  const root = document.getElementById("queue");
+  if (root) root.scrollTop = 0;
+  ensureSelection();
+  render();
+}
+
+function startPicking() {
+  if (!state.trash.length || state.working) return;
+  state.picking = true;
+  state.ask = false;
+  state.note = "";
+  render();
+}
+
+function stopPicking() {
+  if (state.working === "delete") return;
+  state.picking = false;
+  state.picks.clear();
+  state.ask = false;
+  state.note = "";
+  ensureSelection();
+  render();
+}
+
+function toggleAll() {
+  if (state.picks.size === state.trash.length) state.picks.clear();
+  else for (const job of state.trash) state.picks.add(job.id);
+  state.note = "";
+  render();
+}
+
+function requestDelete() {
+  if (!state.picks.size || state.working) return;
+  state.ask = true;
+  state.note = "";
+  render();
+}
+
+function closeAsk() {
+  if (state.working === "delete") return;
+  state.ask = false;
+  render();
+}
+
+function onKey(event) {
+  if (event.key !== "Escape") return;
+  if (state.ask) { event.preventDefault(); closeAsk(); return; }
+  if (state.picking) { event.preventDefault(); stopPicking(); }
 }
 
 function renderPrinter() {

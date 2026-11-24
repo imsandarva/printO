@@ -128,14 +128,25 @@ def test_locked_pdf_can_be_retried_only_when_that_makes_sense(tmp_path):
         assert again["can_retry"] is True
 
 
-def test_remove_deletes_the_file(tmp_path):
+def test_delete_keeps_the_file_until_trash_says_so(tmp_path):
     with running(tmp_path) as (client, ctx, _cups):
         assert _upload(client, "a.pdf", pdf_bytes((200,))).status_code == 201
         job = _wait(client, "a.pdf", {"ready"})
-        removed = client.delete(f"/admin/jobs/{job['id']}")
-        assert removed.status_code == 200 and removed.json()["message"] == "Removed."
-        assert client.get(f"/admin/jobs/{job['id']}").status_code == 404
+        blocked = client.delete(f"/admin/jobs/{job['id']}")
+        assert blocked.status_code == 409 and ctx.files.job_dir(job["id"]).exists()
+        moved = client.post(f"/admin/jobs/{job['id']}/trash")
+        assert moved.status_code == 200 and moved.json()["message"] == "Moved to Trash."
         assert client.get("/admin/jobs").json()["jobs"] == []
+        assert [item["id"] for item in client.get("/admin/jobs?trashed=1").json()["jobs"]] == [job["id"]]
+        assert client.post(f"/admin/jobs/{job['id']}/print", json={}).status_code == 409
+        assert ctx.files.job_dir(job["id"]).exists()
+        brought = client.post(f"/admin/jobs/{job['id']}/restore")
+        assert brought.status_code == 200 and client.get("/admin/jobs").json()["jobs"][0]["id"] == job["id"]
+        assert client.post(f"/admin/jobs/{job['id']}/trash").status_code == 200
+        removed = client.delete(f"/admin/jobs/{job['id']}")
+        assert removed.status_code == 200 and removed.json()["message"] == "Deleted."
+        assert client.get(f"/admin/jobs/{job['id']}").status_code == 404
+        assert client.get("/admin/jobs?trashed=1").json()["jobs"] == []
         assert not ctx.files.job_dir(job["id"]).exists()
 
 

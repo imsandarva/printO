@@ -2,13 +2,14 @@
 
 import { arrange, isOpen, whenLabel } from "./dates.js";
 import { el } from "./dom.js";
+import { checkIcon } from "./icons.js";
 
 export function paintQueue(root, model) {
   if (!root) return;
   const now = new Date();
   const top = root.scrollTop;
   const focusId = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.fold || "" : "";
-  const years = arrange(model.jobs, now);
+  const years = arrange(model.jobs, now, model.waiting !== false);
   root.replaceChildren(...years.map((year) => year.key === "unknown" ? other(year, model, now) : section(year, model, now)));
   root.scrollTop = top;
   if (!focusId) return;
@@ -82,20 +83,31 @@ function spoken(node) {
 }
 
 function card(job, model, now) {
-  const on = job.id === model.selected;
-  const classes = ["card", on ? "on" : "", model.fresh(job.id) ? "fresh" : ""].filter(Boolean).join(" ");
+  const picking = Boolean(model.picking);
+  const picks = model.picks;
+  const on = picking ? Boolean(picks && picks.has(job.id)) : job.id === model.selected;
+  const classes = ["card", picking ? "picking" : "", on ? "on" : "", !picking && model.fresh(job.id) ? "fresh" : ""].filter(Boolean).join(" ");
   const button = el("button", {
     class: classes,
     attrs: { "aria-pressed": on ? "true" : "false" },
     on: { click: () => model.onSelect(job.id) },
   });
+  const body = el("div", { class: "card-body" });
   const top = el("div", { class: "card-top" });
   top.append(
     el("span", { class: "num", text: job.name || "Untitled", attrs: { title: job.name || "" } }),
     el("span", { class: "when", text: whenLabel(job.created_at, now) }),
   );
-  button.append(top, el("span", { class: "label", text: job.label || "", attrs: { "data-status": job.status || "" } }));
+  body.append(top, el("span", { class: "label", text: job.label || "", attrs: { "data-status": job.status || "" } }));
+  if (picking) button.append(tick(on));
+  button.append(body);
   return button;
+}
+
+function tick(on) {
+  const mark = el("span", { class: on ? "tick on" : "tick", attrs: { "aria-hidden": "true" } });
+  if (on) mark.append(checkIcon());
+  return mark;
 }
 
 function chevron() {

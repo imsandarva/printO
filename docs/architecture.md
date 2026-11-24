@@ -18,7 +18,7 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | Print | Builds the exact PDF (chosen pages, repeated per copy) and hands it to CUPS. |
 | Watch | Follows that one CUPS job until CUPS is done with it. Sleeps only while a job is actually printing. |
 
-Sent files stay until someone at the counter removes them. Nothing is deleted because it was printed, or because a few hours or days have passed. A half-written upload is still dropped the next time the shop starts, because it never became a file.
+Sent files stay until someone at the counter deletes them. Delete moves a file to Trash: it leaves the counter, and the bytes stay until it is deleted from Trash. Nothing is deleted because it was printed, or because a few hours or days have passed. A half-written upload is still dropped the next time the shop starts, because it never became a file.
 
 Idle, the process is waiting: no timer walks the queue, and LibreOffice is not running.
 
@@ -32,7 +32,7 @@ LibreOffice is heavy, and it lies about success: it can exit 0 and write nothing
 
 `received → converting → ready → printing → done`
 
-`converting` or `printing` can become `failed`. A failed conversion can be retried. A failed print, or a job already sent, can be sent again. Removing a job deletes the row and the files, and cancels the CUPS job if one was submitted.
+`converting` or `printing` can become `failed`. A failed conversion can be retried. A failed print, or a job already sent, can be sent again. Delete moves a job to Trash and cancels the CUPS job if one was submitted. The row and the files stay. Deleting it from Trash is what removes them. A job in Trash can be put back.
 
 Two clicks cannot both print the same file: the status change happens in one SQLite write (`BEGIN IMMEDIATE`), and the second click finds the row already `printing`.
 
@@ -66,6 +66,6 @@ If the queue says the printer is off or unplugged, the file is not submitted. Se
 
 `scripts/open-counter` only opens the counter again, if that window was closed. It does not start a second copy.
 
-`./shopkeeperpanel` is a small local server for changing the counter page while you watch it update. It serves the counter's HTML, CSS, and JavaScript from disk, and forwards everything else to the real printO on the shop port—jobs, previews, print, remove, printer status, and live updates. If printO is not running, it starts that process without wifi. It listens on another port so it can sit beside a running shop. Sample files in memory exist only for automated tests.
+`./shopkeeperpanel` is a small local server for changing the counter page while you watch it update. It serves the counter's HTML, CSS, and JavaScript from disk, and forwards everything else to the real printO on the shop port—jobs, previews, print, Trash, printer status, and live updates. If printO is not running, it starts that process without wifi. It listens on another port so it can sit beside a running shop. Sample files in memory exist only for automated tests.
 
 At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter is not started there. The preview on the counter is grey because the MF3010 prints black and white.

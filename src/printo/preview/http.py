@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from printo.domain.status import ALL
 from printo.errors import UserError
-from printo.messages import connected, hidden, printer_ready, try_again, unexpected, validation
+from printo.messages import connected, hidden, printer_ready, restored, try_again, unexpected, validation
 from printo.preview.feed import pack
 from printo.preview.files import asset, asset_headers, counter_page, page_headers
 
@@ -20,6 +20,8 @@ _ITEM = re.compile(r"^/admin/jobs/([0-9a-f]{32})$")
 _FILE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/file$")
 _PRINT = re.compile(r"^/admin/jobs/([0-9a-f]{32})/print$")
 _RETRY = re.compile(r"^/admin/jobs/([0-9a-f]{32})/retry$")
+_TRASH = re.compile(r"^/admin/jobs/([0-9a-f]{32})/trash$")
+_RESTORE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/restore$")
 _JSON = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 
 
@@ -75,6 +77,12 @@ def route(handler: Handler, method: str, path: str) -> None:
     if (found := _RETRY.fullmatch(path)) and method == "POST":
         send_json(handler, {"ok": True, "job": handler.server.desk.retry(found.group(1))})
         return
+    if (found := _TRASH.fullmatch(path)) and method == "POST":
+        send_json(handler, {"ok": True, **handler.server.desk.trash(found.group(1))})
+        return
+    if (found := _RESTORE.fullmatch(path)) and method == "POST":
+        send_json(handler, {"ok": True, "message": restored(), "job": handler.server.desk.restore(found.group(1))})
+        return
     if (found := _ITEM.fullmatch(path)) and method == "DELETE":
         send_json(handler, {"ok": True, "message": handler.server.desk.remove(found.group(1))})
         return
@@ -95,10 +103,12 @@ def send_page(handler: Handler) -> None:
 
 
 def send_jobs(handler: Handler) -> None:
-    status = (parse_qs(urlsplit(handler.path).query).get("status") or [None])[0]
+    query = parse_qs(urlsplit(handler.path).query)
+    status = (query.get("status") or [None])[0]
+    trashed = (query.get("trashed") or ["0"])[0] in {"1", "true", "True"}
     if status is not None and status not in ALL:
         raise UserError(validation())
-    send_json(handler, {"ok": True, "jobs": handler.server.desk.jobs(status)})
+    send_json(handler, {"ok": True, "jobs": handler.server.desk.jobs(status, trashed=trashed)})
 
 
 def send_print(handler: Handler, job_id: str) -> None:
@@ -225,7 +235,10 @@ def path_of(handler: Handler) -> str:
 
 
 def found_any(path: str) -> bool:
-    return bool(_ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PRINT.fullmatch(path) or _RETRY.fullmatch(path))
+    return bool(
+        _ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PRINT.fullmatch(path) or _RETRY.fullmatch(path)
+        or _TRASH.fullmatch(path) or _RESTORE.fullmatch(path)
+    )
 
 
 def _next(box: queue.Queue[bytes]) -> bytes:

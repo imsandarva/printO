@@ -16,7 +16,11 @@
       <p class="printer" id="printer" data-state=""><i class="dot" aria-hidden="true"></i><span>Checking the printer…</span></p>
     </header>
     <div class="main">
-      <aside class="queue" id="queue" aria-label="Files"></aside>
+      <aside class="rail">
+        <div class="rail-head" id="rail-head" hidden></div>
+        <div class="queue" id="queue" aria-label="Files"></div>
+        <div class="rail-foot" id="rail-foot"></div>
+      </aside>
       <section class="desk">
         <div class="work">
           <div id="intro"><p class="quiet">One moment…</p></div>

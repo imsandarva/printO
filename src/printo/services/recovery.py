@@ -32,7 +32,7 @@ class Shop(Protocol):
 def recover(shop: Shop) -> None:
     _drop_broken(shop)
     resumed: set[str] = set()
-    for job in shop.jobs.matching(CONVERTING):
+    for job in shop.jobs.matching(CONVERTING, placed="all"):
         reset = shop.jobs.transition(job.id, expect={CONVERTING}, status=RECEIVED, message=preparing(), failure_stage=None)
         if reset is not None:
             resumed.add(reset.id)
@@ -40,7 +40,7 @@ def recover(shop: Shop) -> None:
     for job in shop.jobs.matching(RECEIVED):
         if job.id not in resumed:
             shop.converter.enqueue(job.id)
-    for job in shop.jobs.matching(PRINTING):
+    for job in shop.jobs.matching(PRINTING, placed="all"):
         _recover_print(shop, job)
 
 

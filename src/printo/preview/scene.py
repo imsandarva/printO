@@ -11,8 +11,8 @@ from printo.domain.pages import selection
 from printo.domain.status import CONVERTING, DONE, FAILED, PRINTING, READY, RECEIVED, STAGE_CONVERT, STAGE_PRINT, can_print, can_retry
 from printo.errors import UserError
 from printo.messages import (
-    already_printing, arrived, convert_failed, no_retry, not_found, not_ready, office_failed, preparing, present,
-    printing, ready, rejected, removed, removed_but_printer, removed_event, sent,
+    already_printing, arrived, convert_failed, in_trash, no_retry, not_found, not_ready, office_failed, preparing, present,
+    printing, ready, rejected, removed, removed_but_printer, removed_event, sent, still_kept, trashed, trashed_but_printer,
 )
 from printo.preview.paper import sheet
 
@@ -34,9 +34,9 @@ class Scene:
                 timer.cancel()
             self._timers.clear()
 
-    def jobs(self, status: str | None = None) -> list[dict]:
+    def jobs(self, status: str | None = None, *, trashed: bool = False) -> list[dict]:
         with self._lock:
-            chosen = [job for job in self._jobs if status is None or job.status == status]
+            chosen = [job for job in self._jobs if bool(job.trashed_at) is trashed and (status is None or job.status == status)]
             chosen.sort(key=lambda job: job.created_at, reverse=True)
             return [present(job) for job in chosen]
 
@@ -54,6 +54,8 @@ class Scene:
     def print_job(self, job_id: str, pages: str, copies: int) -> dict:
         with self._lock:
             job = self._get(job_id)
+            if job.trashed_at:
+                raise UserError(in_trash(), 409)
             if job.status == PRINTING:
                 raise UserError(already_printing(), 409)
             if not can_print(job):
@@ -69,6 +71,8 @@ class Scene:
     def retry(self, job_id: str) -> dict:
         with self._lock:
             job = self._get(job_id)
+            if job.trashed_at:
+                raise UserError(in_trash(), 409)
             if not can_retry(job):
                 raise UserError(no_retry(), 409)
             updated = _with(job, status=CONVERTING, failure_stage=None, message=preparing(), page_count=None)
@@ -77,9 +81,30 @@ class Scene:
         self._emit("job", present(updated))
         return present(updated)
 
+    def trash(self, job_id: str) -> dict:
+        with self._lock:
+            job = self._get(job_id)
+            warning = job.status == PRINTING and not job.trashed_at
+            updated = job if job.trashed_at else _with(job, trashed_at=stamp(datetime.now(timezone.utc)))
+            self._save(updated)
+        self._emit("job", present(updated))
+        return {"message": trashed_but_printer() if warning else trashed(), "job": present(updated)}
+
+    def restore(self, job_id: str) -> dict:
+        with self._lock:
+            job = self._get(job_id)
+            if not job.trashed_at:
+                raise UserError(not_found(), 404)
+            updated = _with(job, trashed_at=None)
+            self._save(updated)
+        self._emit("job", present(updated))
+        return present(updated)
+
     def remove(self, job_id: str) -> str:
         with self._lock:
             job = self._get(job_id)
+            if not job.trashed_at:
+                raise UserError(still_kept(), 409)
             self._jobs = [item for item in self._jobs if item.id != job_id]
             self._drop_timer(job_id)
             was_printing = job.status == PRINTING
@@ -152,7 +177,7 @@ def _job(number: str, name: str, kind: str, ext: str, status: str, message: str,
     return Job(
         id=f"{int(number):032x}", original_name=name, kind=kind, source_ext=ext, status=status,
         failure_stage=failure, message=message, byte_size=48_000, page_count=pages, pages_spec=spec or ("all" if pages else None),
-        copies=copies or (1 if pages else None), cups_job_id=None, created_at=moment, updated_at=moment, delete_after=None,
+        copies=copies or (1 if pages else None), cups_job_id=None, created_at=moment, updated_at=moment, delete_after=None, trashed_at=None,
     )
 
 

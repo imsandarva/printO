@@ -24,6 +24,8 @@ class Job:
     updated_at: str
     # Left from when files were removed on a timer. Always cleared. Never used to delete a file.
     delete_after: str | None
+    # Set while the file sits in Trash. The bytes stay until it is deleted from there.
+    trashed_at: str | None
 
 
 def display_name(raw: str | None) -> str:

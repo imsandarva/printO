@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from printo.domain.job import Job
 from printo.errors import UserError
 from printo.http.respond import succeed
-from printo.messages import not_found, present, running
+from printo.messages import not_found, present, restored, running
 
 router = APIRouter(prefix="/admin")
 
@@ -31,8 +31,8 @@ def printer(request: Request) -> object:
 
 
 @router.get("/jobs")
-def list_jobs(request: Request, status: str | None = None) -> object:
-    jobs = request.app.state.ctx.jobs.matching(status)
+def list_jobs(request: Request, status: str | None = None, trashed: bool = False) -> object:
+    jobs = request.app.state.ctx.jobs.matching(status, placed="trash" if trashed else "counter")
     return succeed({"jobs": [present(job) for job in jobs]})
 
 
@@ -63,9 +63,21 @@ def retry(request: Request, job_id: str) -> object:
     return succeed({"job": present(job)})
 
 
+@router.post("/jobs/{job_id}/trash")
+async def trash_job(request: Request, job_id: str) -> object:
+    message, job = await request.app.state.ctx.trash.move(job_id)
+    return succeed({"message": message, "job": present(job)})
+
+
+@router.post("/jobs/{job_id}/restore")
+async def restore_job(request: Request, job_id: str) -> object:
+    job = await request.app.state.ctx.trash.restore(job_id)
+    return succeed({"message": restored(), "job": present(job)})
+
+
 @router.delete("/jobs/{job_id}")
 async def remove(request: Request, job_id: str) -> object:
-    message = await request.app.state.ctx.printing.cancel_job(job_id)
+    message = await request.app.state.ctx.trash.forget(job_id)
     return succeed({"message": message})
 
 

@@ -165,11 +165,31 @@ def compose_failed() -> str:
 
 
 def removed() -> str:
-    return "Removed."
+    return "Deleted."
 
 
 def removed_but_printer() -> str:
-    return "Removed here, but the printer may still finish the copy it already started."
+    return "Deleted here, but the printer may still finish the copy it already started."
+
+
+def trashed() -> str:
+    return "Moved to Trash."
+
+
+def trashed_but_printer() -> str:
+    return "Moved to Trash. The printer may still finish the copy it already started."
+
+
+def restored() -> str:
+    return "Back at the counter."
+
+
+def still_kept() -> str:
+    return "Move it to Trash first."
+
+
+def in_trash() -> str:
+    return "That file is in Trash."
 
 
 def running() -> str:
@@ -253,6 +273,7 @@ def present(job: Job) -> dict:
         "can_retry": can_retry(job),
         "created_at": job.created_at,
         "updated_at": job.updated_at,
+        "trashed_at": job.trashed_at,
     }
 
 
