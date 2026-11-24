@@ -1,5 +1,6 @@
 /* The sheet on the desk. Drawn here, so the browser's PDF window never frames it.
-   The phone keeps the viewer; this page uses that same copy. */
+   The phone keeps the viewer; this page uses that same copy.
+   A page choice only changes which sheets are on the desk. The file stays open. */
 
 import * as pdfjs from "/c/pdf.min.mjs";
 import { holdPages } from "./bar.js";
@@ -25,17 +26,33 @@ export function showSheets(slot, id, bytes, copy) {
   const view = {
     id, open: true, mark: 1, doc: null, tasks: [], observer: null, resize: null, hold: null, root: null,
     fit: clampFit(copy.fit), onFit: copy.onFit || null, caption: copy.caption, fail: copy.fail,
+    pages: copy.pages ? copy.pages.slice() : null, pool: new Map(), stack: null, scroller: null, frame: null,
+    ratio: 0, shown: null, gen: 0, veil: null, timer: 0, running: false, again: false,
   };
   live = view;
   read(view, slot, bytes);
 }
 
+/* Which pages will print. Called again as the choice changes; the PDF is not opened twice. */
+export function focusSheets(pages) {
+  if (!live || !pages || !pages.length) return;
+  live.pages = pages.slice();
+  if (!live.stack) return;
+  if (live.timer) clearTimeout(live.timer);
+  live.timer = setTimeout(() => { live.timer = 0; if (live && live.open) kick(live); }, 80);
+}
+
 function shutdown(view) {
   view.open = false;
+  view.gen += 1;
+  if (view.timer) clearTimeout(view.timer);
+  view.veil?.remove();
+  view.veil = null;
   view.hold?.close();
   view.observer?.disconnect();
   view.resize?.disconnect();
   cancel(view);
+  view.pool = null;
   const doc = view.doc;
   view.doc = null;
   if (doc) doc.destroy();
@@ -73,7 +90,6 @@ async function place(view, slot) {
   if (!current(view, slot)) return;
   const scroller = el("div", { class: "sheet-page", attrs: { role: "region", "aria-label": "Pages" } });
   const stack = el("div", { class: "sheet-stack" });
-  for (let number = 1; number <= view.doc.numPages; number += 1) stack.append(blank(number, ratio));
   scroller.append(stack);
   if (!current(view, slot)) return;
   const held = holdPages(scroller);
@@ -81,10 +97,17 @@ async function place(view, slot) {
   if (!current(view, slot)) { held.close(); return; }
   view.hold = held;
   view.root = preview;
+  view.frame = held.frame;
+  view.scroller = scroller;
+  view.stack = stack;
+  view.ratio = ratio;
   slot.replaceChildren(preview);
   matchPaper(view, scroller);
   if (!view.open) return;
   listen(view, scroller, stack);
+  const pages = wanted(view);
+  mount(view, pages);
+  view.shown = keyOf(pages);
   requestAnimationFrame(() => drawVisible(view, scroller, stack));
 }
 
@@ -151,8 +174,188 @@ function listen(view, scroller, stack) {
 function retarget(view, scroller, stack) {
   cancel(view);
   view.mark += 1;
-  for (const sheet of stack.children) { sheet.dataset.drawn = ""; sheet.dataset.drawing = ""; }
+  for (const sheet of stack.children) forget(sheet);
+  if (view.pool) for (const sheet of view.pool.values()) forget(sheet);
   drawVisible(view, scroller, stack);
+}
+
+function forget(sheet) { sheet.dataset.drawn = ""; sheet.dataset.drawing = ""; }
+
+function kick(view) {
+  if (view.running) { view.again = true; return; }
+  view.running = true;
+  settle(view).finally(() => {
+    view.running = false;
+    if (!view.open || !view.again) { view.again = false; return; }
+    view.again = false;
+    kick(view);
+  });
+}
+
+/* The old view stays painted over the sheet, then dissolves once the new pages are ready. */
+async function settle(view) {
+  const numbers = wanted(view);
+  const key = keyOf(numbers);
+  if (!view.open || view.shown === key) return;
+  const gen = ++view.gen;
+  const animate = motionOk();
+  const held = animate ? anchorOf(view.scroller) : null;
+  if (animate && !view.veil) takeVeil(view);
+  view.shown = key;
+  mount(view, numbers);
+  restoreScroll(view.scroller, held, numbers);
+  if (!view.open || view.gen !== gen) return;
+  drawVisible(view, view.scroller, view.stack);
+  if (!animate) { dropVeil(view); return; }
+  await whenDrawn(view, visibleSheet(view), gen);
+  // A newer choice arrived while this one was settling. Keep the veil and let that choice fade once.
+  if (!view.open || view.gen !== gen || view.again || !view.veil) return;
+  const veil = view.veil;
+  view.veil = null;
+  fadeVeil(veil);
+}
+
+function wanted(view) {
+  const count = view.doc ? view.doc.numPages : 0;
+  const pages = view.pages && view.pages.length ? view.pages : every(count);
+  return pages.filter((number) => number >= 1 && number <= count);
+}
+
+function every(count) {
+  const pages = [];
+  for (let number = 1; number <= count; number += 1) pages.push(number);
+  return pages;
+}
+
+function keyOf(pages) { return pages.join(","); }
+
+function mount(view, numbers) {
+  const keep = new Set();
+  const frag = document.createDocumentFragment();
+  for (const number of numbers) {
+    const sheet = sheetFor(view, number);
+    keep.add(sheet);
+    frag.append(sheet);
+    view.observer?.observe(sheet);
+  }
+  if (view.pool) for (const sheet of view.pool.values()) if (!keep.has(sheet)) view.observer?.unobserve(sheet);
+  view.stack.replaceChildren(frag);
+}
+
+function sheetFor(view, number) {
+  const key = String(number);
+  const found = view.pool.get(key);
+  if (found) return found;
+  const sheet = blank(number, view.ratio);
+  view.pool.set(key, sheet);
+  return sheet;
+}
+
+function anchorOf(scroller) {
+  const top = scroller.scrollTop;
+  for (const sheet of scroller.querySelectorAll(".sheet")) {
+    if (sheet.offsetTop + sheet.offsetHeight > top + 1) return { page: Number(sheet.dataset.page), delta: sheet.offsetTop - top };
+  }
+  return null;
+}
+
+function restoreScroll(scroller, held, numbers) {
+  if (!held || !numbers.length) { scroller.scrollTop = 0; return; }
+  const page = numbers.includes(held.page) ? held.page : nearest(held.page, numbers);
+  const sheet = [...scroller.querySelectorAll(".sheet")].find((node) => Number(node.dataset.page) === page);
+  if (!sheet) { scroller.scrollTop = 0; return; }
+  scroller.scrollTop = Math.max(0, sheet.offsetTop - (numbers.includes(held.page) ? held.delta : 0));
+}
+
+function nearest(page, numbers) {
+  let best = numbers[0];
+  let gap = Math.abs(best - page);
+  for (const number of numbers) {
+    const next = Math.abs(number - page);
+    if (next < gap) { best = number; gap = next; }
+  }
+  return best;
+}
+
+function visibleSheet(view) {
+  const top = view.scroller.scrollTop;
+  for (const sheet of view.stack.children) if (sheet.offsetTop + sheet.offsetHeight > top + 1) return sheet;
+  return view.stack.firstElementChild;
+}
+
+function whenDrawn(view, sheet, gen) {
+  if (!sheet || sheet.dataset.drawn === String(view.mark)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const deadline = performance.now() + 480;
+    const tick = () => {
+      if (!view.open || view.gen !== gen || sheet.dataset.drawn === String(view.mark) || performance.now() > deadline) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+function takeVeil(view) {
+  const scroller = view.scroller;
+  const width = scroller.clientWidth;
+  const height = scroller.clientHeight;
+  if (!width || !height || !view.frame) return null;
+  const veil = document.createElement("canvas");
+  veil.className = "sheet-veil";
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  veil.width = Math.max(1, Math.floor(width * dpr));
+  veil.height = Math.max(1, Math.floor(height * dpr));
+  veil.style.width = width + "px";
+  veil.style.height = height + "px";
+  const context = veil.getContext("2d");
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const top = scroller.scrollTop;
+  const scale = view.fit / 100;
+  let painted = false;
+  for (const sheet of view.stack.children) {
+    const y = sheet.offsetTop;
+    if (y + sheet.offsetHeight < top || y > top + height) continue;
+    if (paintVeil(context, sheet, y - top, scale)) painted = true;
+  }
+  if (!painted) return null;
+  view.frame.append(veil);
+  view.veil = veil;
+  return veil;
+}
+
+function paintVeil(context, sheet, dy, scale) {
+  const canvas = sheet.querySelector("canvas");
+  if (!canvas || !canvas.width) return false;
+  const width = sheet.clientWidth;
+  const height = sheet.clientHeight;
+  if (!width || !height) return false;
+  context.save();
+  context.beginPath();
+  context.rect(0, dy, width, height);
+  context.clip();
+  if (Math.abs(scale - 1) > 0.001) {
+    context.translate(width / 2, dy + height / 2);
+    context.scale(scale, scale);
+    context.translate(-width / 2, -(dy + height / 2));
+  }
+  context.drawImage(canvas, 0, dy, width, height);
+  context.restore();
+  return true;
+}
+
+function fadeVeil(veil) {
+  const motion = veil.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 380, easing: "cubic-bezier(0.22, 0.61, 0.36, 1)", fill: "forwards" });
+  const done = () => veil.remove();
+  motion.finished.then(done, done);
+}
+
+function dropVeil(view) {
+  view.veil?.remove();
+  view.veil = null;
+}
+
+function motionOk() {
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function drawVisible(view, scroller, stack) {

@@ -4,9 +4,9 @@
 import { el } from "./dom.js";
 import { clampFit } from "./fit.js";
 import { trashIcon } from "./icons.js";
-import { clampPage, paintPages, readPages, writePages } from "./pages.js";
+import { clampPage, pageNumbers, paintPages, readPages, writePages } from "./pages.js";
 import { paintQueue, setOpen } from "./queue.js";
-import { closeSheets, showSheets } from "./sheets.js";
+import { closeSheets, focusSheets, showSheets } from "./sheets.js";
 import { paintAsk, paintBin } from "./trash.js";
 
 const COPY_LIMIT = 20;
@@ -285,7 +285,7 @@ function renderPaper() {
   }
   const job = current();
   const key = job && job.page_count ? job.id : "";
-  if (slot.dataset.key === key) return;
+  if (slot.dataset.key === key) { if (key) syncSheets(job); return; }
   slot.dataset.key = key;
   closeSheets();
   if (!key) { slot.hidden = true; slot.replaceChildren(); return; }
@@ -321,9 +321,21 @@ async function showPreview(job) {
 
 function previewCopy(job) {
   const fail = "The pages aren't ready to look at yet.";
-  if (state.view === "trash") return { caption: "", fail };
+  const pages = previewPages(job);
+  if (state.view === "trash") return { caption: "", fail, pages };
   const draft = draftOf(job);
-  return { caption: "This is how the page will look.", fail, fit: draft.fit, onFit: (fit) => rememberFit(job.id, fit) };
+  return { caption: "This is how the page will look.", fail, fit: draft.fit, onFit: (fit) => rememberFit(job.id, fit), pages };
+}
+
+function previewPages(job) {
+  const count = job.page_count || 1;
+  if (state.view === "trash" || count < 2) return pageNumbers({ choice: "all", count, from: 1, to: count });
+  return pageNumbers(draftOf(job));
+}
+
+function syncSheets(job) {
+  if (!job || !job.page_count || state.view === "trash") return;
+  focusSheets(previewPages(job));
 }
 
 function rememberFit(id, fit) {
@@ -358,7 +370,7 @@ function renderControls() {
 
 function settings(job, draft, wasOpen) {
   const row = el("div", { class: "settings" });
-  if (job.page_count > 1) row.append(paintPages(draft, job, { wasOpen, onChange: () => render() }));
+  if (job.page_count > 1) row.append(paintPages(draft, job, { wasOpen, onChange: () => render(), onRange: () => syncSheets(job) }));
   else if (job.page_count === 1) row.append(el("p", { class: "hint alone", text: "1 page" }));
   row.append(copiesField(job, draft));
   return row;

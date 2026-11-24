@@ -1,6 +1,7 @@
 /* Which pages to print. One choice: all, even, odd, or a from–to range.
    Page numbers start at 1. The fields never keep a 0 or a page past the end.
-   The italic tally sits under the choices, or under From–To for a custom range. */
+   The italic tally sits under the choices, or under From–To for a custom range.
+   pageNumbers is the same set the preview shows and the printer receives. */
 
 import { el } from "./dom.js";
 import { checkIcon } from "./icons.js";
@@ -32,6 +33,16 @@ export function writePages(draft) {
   return start === end ? String(start) : start + "-" + end;
 }
 
+export function pageNumbers(draft) {
+  const count = atLeastOne(draft.count);
+  if (draft.choice === "odd") return stepped(count, 1);
+  if (draft.choice === "even") return stepped(count, 2);
+  if (draft.choice !== "custom") return ranged(1, count);
+  const start = Math.min(clampPage(draft.from, count), clampPage(draft.to, count));
+  const end = Math.max(clampPage(draft.from, count), clampPage(draft.to, count));
+  return ranged(start, end);
+}
+
 export function clampPage(value, pageCount) {
   const count = atLeastOne(pageCount);
   const number = Math.trunc(Number(value));
@@ -42,7 +53,7 @@ export function clampPage(value, pageCount) {
 export function paintPages(draft, job, hooks) {
   draft.count = atLeastOne(job.page_count || draft.count);
   const wrap = el("div", { class: "field pages" });
-  const span = range(draft);
+  const span = range(draft, hooks);
   wrap.append(head(draft.count), choices(draft, hooks));
   if (draft.choice !== "custom") wrap.append(tallyNode(draft));
   wrap.append(span);
@@ -96,15 +107,18 @@ function motionOk() {
   return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-/* Odd and even use the same split the printer uses: page 1 is odd. */
-function printedPages(draft) {
-  const count = atLeastOne(draft.count);
-  if (draft.choice === "odd") return Math.ceil(count / 2);
-  if (draft.choice === "even") return Math.floor(count / 2);
-  if (draft.choice !== "custom") return count;
-  const start = Math.min(clampPage(draft.from, count), clampPage(draft.to, count));
-  const end = Math.max(clampPage(draft.from, count), clampPage(draft.to, count));
-  return end - start + 1;
+function printedPages(draft) { return pageNumbers(draft).length; }
+
+function stepped(count, first) {
+  const pages = [];
+  for (let number = first; number <= count; number += 2) pages.push(number);
+  return pages;
+}
+
+function ranged(start, end) {
+  const pages = [];
+  for (let number = start; number <= end; number += 1) pages.push(number);
+  return pages;
 }
 
 function pagesInTotal(count) {
@@ -155,19 +169,19 @@ function arrowChoice(id, key) {
   return "";
 }
 
-function range(draft) {
+function range(draft, hooks) {
   const span = el("div", { class: "page-span" });
   const clip = el("div", { class: "page-span-clip" });
   if (draft.choice !== "custom") clip.inert = true;
   const row = el("div", { class: "page-range" });
-  row.append(bound(draft, "from", "From", "page-from"), bound(draft, "to", "To", "page-to"));
+  row.append(bound(draft, hooks, "from", "From", "page-from"), bound(draft, hooks, "to", "To", "page-to"));
   clip.append(row);
   if (draft.choice === "custom") clip.append(tallyNode(draft));
   span.append(clip);
   return span;
 }
 
-function bound(draft, which, label, id) {
+function bound(draft, hooks, which, label, id) {
   const wrap = el("label", { class: "bound" });
   const input = document.createElement("input");
   input.id = id;
@@ -177,22 +191,23 @@ function bound(draft, which, label, id) {
   input.spellcheck = false;
   input.maxLength = String(draft.count).length;
   input.value = String(draft[which]);
-  input.addEventListener("input", () => onType(draft, which, input));
-  input.addEventListener("blur", () => onBlur(draft, which));
+  input.addEventListener("input", () => onType(draft, hooks, which, input));
+  input.addEventListener("blur", () => onBlur(draft, hooks, which));
   wrap.append(el("span", { text: label }), input);
   return wrap;
 }
 
-function onType(draft, which, input) {
+function onType(draft, hooks, which, input) {
   const live = liveBound(input.value, draft.count);
   if (input.value !== live.text) input.value = live.text;
   if (live.value == null || draft[which] === live.value) return;
   draft[which] = live.value;
   draft.dirty = true;
   refreshTally(draft);
+  hooks.onRange?.();
 }
 
-function onBlur(draft, which) {
+function onBlur(draft, hooks, which) {
   const id = which === "from" ? "page-from" : "page-to";
   draft[which] = typedOrKept(draft[which], id, draft.count);
   // Keep the number just entered, and move the other end so the range stays in order.
@@ -201,6 +216,7 @@ function onBlur(draft, which) {
   draft.dirty = true;
   showRange(draft);
   refreshTally(draft);
+  hooks.onRange?.();
 }
 
 function typedOrKept(kept, id, count) {

@@ -443,11 +443,22 @@ body { height: 100dvh; overflow: hidden; }
   --sheet: 0.70707;
   --bar: 24px;
   --bar-gap: 12px;
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: var(--bar-gap);
   width: min(100%, calc((100dvh - 230px) * var(--sheet)));
   max-height: calc(100dvh - 230px);
+}
+
+/* The previous pages, held over the sheet just long enough to dissolve into the new ones. */
+.sheet-veil {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+  filter: grayscale(1);
 }
 
 .sheet-frame.scrolling { width: min(100%, calc((100dvh - 230px) * var(--sheet) + var(--bar-gap) + var(--bar))); }
