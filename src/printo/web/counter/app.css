@@ -359,11 +359,48 @@ body { height: 100dvh; overflow: hidden; }
 
 .card.fresh { animation: rise 0.4s ease; }
 
-.card-top { width: 100%; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+/* A hairline between files in one day. It yields when a row is selected or under the pointer, so it never cuts the highlight. */
+.card + .card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 10px;
+  height: 1px;
+  background: rgba(26, 23, 20, 0.07);
+  pointer-events: none;
+  transition: background 0.18s ease;
+}
 
-.num { flex: 1; min-width: 0; font-weight: 650; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.on::after,
+.card:hover::after,
+.card:focus-visible::after,
+.card.on + .card::after,
+.card:hover + .card::after,
+.card:focus-visible + .card::after { background: transparent; }
 
-.when, .file { color: var(--ink-soft); font-size: 0.86rem; }
+.card-top { width: 100%; display: flex; justify-content: space-between; gap: 14px; align-items: baseline; }
+
+.num {
+  flex: 1;
+  min-width: 0;
+  font-weight: 400;
+  font-size: 0.92rem;
+  line-height: 1.3;
+  letter-spacing: -0.006em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.when, .file {
+  flex: none;
+  color: var(--ink-soft);
+  font-weight: 400;
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
 
 .file, .name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

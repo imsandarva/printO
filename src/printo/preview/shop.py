@@ -31,11 +31,8 @@ class ShopSession:
     def close(self) -> None:
         if self._process is None:
             return
-        self._process.terminate()
-        try:
-            self._process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self._process.kill()
+        process, self._process = self._process, None
+        _stop(process)
 
 
 def ensure_shop() -> ShopSession:
@@ -50,7 +47,7 @@ def ensure_shop() -> ShopSession:
     except KeyboardInterrupt:
         _stop(process)
         reader.join(timeout=1)
-        raise SystemExit(130) from None
+        raise SystemExit(0) from None
     if ready:
         return ShopSession(port, process)
     _stop(process)
@@ -99,7 +96,11 @@ def _spawn(port: int) -> tuple[subprocess.Popen[str], list[str], threading.Threa
     env.setdefault("PYTHONUNBUFFERED", "1")
     env.setdefault("PRINTO_PORT", str(port))
     notes: list[str] = []
-    process = subprocess.Popen(command, cwd=_ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    # Its own session, so this window's close key reaches the counter, not printO.
+    # The counter asks printO to stop once the person is done.
+    process = subprocess.Popen(
+        command, cwd=_ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, start_new_session=True,
+    )
     reader = threading.Thread(target=_collect, args=(process, notes), name="printo-notes", daemon=True)
     reader.start()
     return process, notes, reader
@@ -118,9 +119,17 @@ def _collect(process: subprocess.Popen[str], notes: list[str]) -> None:
 def _stop(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
-    process.kill()
+    process.terminate()
     try:
         process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        _reap(process)
+
+
+def _reap(process: subprocess.Popen[str]) -> None:
+    try:
+        process.wait(timeout=2)
     except subprocess.TimeoutExpired:
         return
 

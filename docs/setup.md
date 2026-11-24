@@ -15,7 +15,7 @@ python3 -m venv .venv
 
 ## Open the shop
 
-From this folder, one command. It stays in that window: it starts the shop wifi, printO, and the counter, and it shows a code for the customer page. A phone joins that wifi, then scans the code or types the address under it. Press Ctrl+C to close the shop. That turns the shop wifi off and tries to put the previous wifi back.
+From this folder, one command. It stays in that window: it starts the shop wifi, printO, and the counter, and it shows a code for the customer page. A phone joins that wifi, then scans the code or types the address under it. Type off to close the shop. The shop finishes, turns the shop wifi off, and tries to put the previous wifi back. The usual close key does this same stop, so the computer does not offer to send a crash report.
 
 ```bash
 ./scripts/start-shop
@@ -33,7 +33,7 @@ To look at the counter while changing it, without starting the shop and without 
 ./shopkeeperpanel
 ```
 
-That opens the same counter the shopkeeper would see, with the real files already in the shop. It does not turn on the hotspot. If printO is not running yet, it starts only that part in the background; if the shop is already open, it reuses it. Saving the counter page on disk updates the open window. Press Ctrl+C when you are done. It listens on a port just above the shop's, so both can be open together.
+That opens the same counter the shopkeeper would see, with the real files already in the shop. It does not turn on the hotspot. If printO is not running yet, it starts only that part in the background; if the shop is already open, it reuses it. Saving the counter page on disk updates the open window. Type off when you are done. It listens on a port just above the shop's, so both can be open together.
 
 The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown when the shop starts. Write them where customers can see them too. The address of the page is saved there as well, once the shop has started.
 

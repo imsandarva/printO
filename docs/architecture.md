@@ -62,10 +62,10 @@ If the queue says the printer is off or unplugged, the file is not submitted. Se
 
 ## What starts when
 
-`scripts/start-shop` is the shop. It turns this computer into the hotspot, prints the customer code in that same window, starts this process, and opens the counter. Press Ctrl+C there to stop. That closes the page even if a phone still has it open, turns the hotspot off, and tries to put the previous wifi back.
+`scripts/start-shop` is the shop. It turns this computer into the hotspot, prints the customer code in that same window, starts this process, and opens the counter. Type off in that window to stop. The shop finishes what it was doing, even if a phone still has the page open, then turns the hotspot off and tries to put the previous wifi back. Asking the window to close does that same stop. The process leaves on its own, so Ubuntu does not treat it as a crash.
 
 `scripts/open-counter` only opens the counter again, if that window was closed. It does not start a second copy.
 
-`./shopkeeperpanel` is a small local server for changing the counter page while you watch it update. It serves the counter's HTML, CSS, and JavaScript from disk, and forwards everything else to the real printO on the shop port—jobs, previews, print, Trash, printer status, and live updates. If printO is not running, it starts that process without wifi. It listens on another port so it can sit beside a running shop. Sample files in memory exist only for automated tests.
+`./shopkeeperpanel` is a small local server for changing the counter page while you watch it update. It serves the counter's HTML, CSS, and JavaScript from disk, and forwards everything else to the real printO on the shop port—jobs, previews, print, Trash, printer status, and live updates. If printO is not running, it starts that process without wifi, in its own session, and stops it again when this window closes. It listens on another port so it can sit beside a running shop. Type off to close it. Sample files in memory exist only for automated tests.
 
 At boot, via systemd: this process, and the hotspot as a saved NetworkManager connection. The counter is not started there. The preview on the counter is grey because the MF3010 prints black and white.

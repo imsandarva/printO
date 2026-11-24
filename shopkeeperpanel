@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The counter, on its own, wired to the real shop data while you change the page.
 # This does not start the hotspot. It starts printO only when nothing is listening yet.
+# Type off in this window to close it.
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"

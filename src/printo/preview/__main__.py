@@ -2,6 +2,7 @@
 
 import errno
 
+from printo.console import Console, ignore_stop_signals
 from printo.preview.browser import open_browser
 from printo.preview.serve import already_running, counter_url, listen_port, start
 from printo.preview.shop import ensure_shop
@@ -11,24 +12,30 @@ def main() -> None:
     port = listen_port()
     url = counter_url(port)
     if already_running(port):
-        _show(url, "The counter is already open.")
+        _show(url, "The counter is already open. Type off in its window to close it.")
         return
     shop = ensure_shop()
     preview = None
+    closed = False
     try:
         preview = start(port, shop_port=shop.port)
         extra = " It started printO in the background." if shop.spawned else ""
-        _show(preview.url, f"The counter is open with the same files as the shop.{extra} Leave this window here while you change the page, and it will update on its own. Press Ctrl+C when you are done.")
+        _show(preview.url, f"The counter is open with the same files as the shop.{extra} Leave this window here while you change the page, and it will update on its own. Type off to close it.")
+        Console().start(preview.request_close)
         preview.wait()
+        closed = True
     except OSError as exc:
         if exc.errno != errno.EADDRINUSE:
             raise
         _say("Something else is already using the counter's page. Close it, then try again.")
         raise SystemExit(1) from None
     finally:
+        ignore_stop_signals()
         if preview is not None:
             preview.close()
         shop.close()
+    if closed:
+        _say("The counter is closed.")
 
 
 def _show(url: str, message: str) -> None:

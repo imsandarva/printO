@@ -1,14 +1,15 @@
-"""Keep the page up, and always let Ctrl+C close it.
+"""Keep the page up until the person is done.
 
-A phone that still has the page open must not pin this process in place.
-The first Ctrl+C closes those connections and stops. A second one stops immediately.
+Typing off, or asking the window to close, both ask the page to finish and leave.
+The process must not be killed mid-step: that is what makes Ubuntu offer to send
+a crash report. A phone that still has the page open must not pin it in place.
 """
 
-import os
 from types import FrameType
 
 import uvicorn
 
+from printo.console import Console, ignore_stop_signals
 from printo.http.app import create_app
 from printo.wiring import Context
 
@@ -27,17 +28,33 @@ _QUIET = {
 
 
 class _Server(uvicorn.Server):
+    ctx: Context | None = None
+
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
-        if self.should_exit:
-            os._exit(128 + sig)
-        super().handle_exit(sig, frame)
+        # Do not record the signal. Uvicorn would raise it again on the way out,
+        # and the process would die instead of finishing.
+        ask(self)
 
 
 def serve(ctx: Context) -> None:
+    server = _Server(_config(ctx))
+    server.ctx = ctx
+    # The server owns the signals, so a close still runs its own shutdown.
+    Console().start(lambda: ask(server), signals=False)
     try:
-        _Server(_config(ctx)).run()
+        server.run()
     except KeyboardInterrupt:
-        return
+        pass
+    finally:
+        ignore_stop_signals()
+    if server.started:
+        print("The shop is closed.", flush=True)
+
+
+def ask(server: "_Server") -> None:
+    if server.ctx is not None:
+        server.ctx.events.close()
+    server.should_exit = True
 
 
 def _config(ctx: Context) -> uvicorn.Config:

@@ -44,6 +44,9 @@ class Preview:
         except KeyboardInterrupt:
             return
 
+    def request_close(self) -> None:
+        self._stop.set()
+
     def close(self) -> None:
         if self._closed:
             return

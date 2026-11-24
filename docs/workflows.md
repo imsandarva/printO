@@ -6,7 +6,7 @@ The customer joins the shop wifi. The name and password are in the window where 
 
 They choose their files, check them, and send them. The page confirms when the shop computer has them. Printing still happens here.
 
-On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and press Ctrl+C to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there, under their own names. They choose pages and how many copies, then press Print. The page is shown in grey because the printer is black and white.
+On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and type off to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there, under their own names. They choose pages and how many copies, then press Print. The page is shown in grey because the printer is black and white.
 
 Try again prepares a file that failed. Print again sends one that already went, or one the printer refused. Delete moves it to Trash. A second print of a file that is already printing is refused. New files play a short sound after the counter has been clicked once, which is a limit of the browser, and the list updates on its own.
 
@@ -42,7 +42,7 @@ The file then moves `received → converting → ready` on its own. Failures sta
 
 All of these refuse any connection that is not from the laptop itself. A phone gets "This page isn't available."
 
-The counter screen puts the file list on the left, the print controls beside it, and the page preview on the right. Files are grouped by the year, then the month, then the day they were sent, newest first. Today’s year, month, and day are open. Older ones are closed until someone opens them. A closed day with something still to print shows a small mark, so it is not easy to miss.
+The counter screen puts the file list on the left, the print controls beside it, and the page preview on the right. Files are grouped by the year, then the month, then the day they were sent, newest first. Today’s year, month, and day are open. Older ones are closed until someone opens them. A closed day with something still to print shows a small mark, so it is not easy to miss. In the list, a file’s name is regular weight, a step quieter than the date above it, with the time smaller and softer on the right. A thin line sits between files in the same day, and it steps aside when a file is selected.
 
 | Request | What it does |
 | --- | --- |
@@ -68,7 +68,7 @@ Printing a `done` job sends it again. That is the reprint. The printer being off
 
 ## Changing the counter
 
-`./shopkeeperpanel` opens the same counter with the same files already in the shop. It does not turn on the hotspot. If printO is not running, it starts only that part in the background. Leave that window open while you change the page; saving updates what you see. Press Ctrl+C when you are done looking.
+`./shopkeeperpanel` opens the same counter with the same files already in the shop. It does not turn on the hotspot. If printO is not running, it starts only that part in the background. Leave that window open while you change the page; saving updates what you see. Type off when you are done looking.
 
 ## Keeping files
 
