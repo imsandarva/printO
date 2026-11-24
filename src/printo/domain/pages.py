@@ -18,12 +18,23 @@ def parse_pages(spec: str, page_count: int) -> list[int]:
     text = spec.strip().lower()
     if text in {"", "all"}:
         return list(range(page_count)) if page_count > 0 else _bad(page_count)
+    # Named sets stay short on the wire. The counter offers these beside a single from–to range.
+    if text in {"odd", "even"}:
+        return _half(text, page_count)
     indexes: list[int] = []
     for token in text.split(","):
         indexes.extend(_span(token.strip(), page_count))
     if not indexes:
         _bad(page_count)
     return indexes
+
+
+def _half(text: str, page_count: int) -> list[int]:
+    if page_count < 1:
+        return _bad(page_count)
+    odd = text == "odd"
+    indexes = [index for index in range(page_count) if ((index + 1) % 2 == 1) is odd]
+    return indexes or _bad(page_count)
 
 
 def _copies(copies: int, max_copies: int) -> int:

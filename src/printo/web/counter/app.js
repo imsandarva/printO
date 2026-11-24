@@ -3,6 +3,7 @@
 
 import { el } from "./dom.js";
 import { trashIcon } from "./icons.js";
+import { clampPage, paintPages, readPages, writePages } from "./pages.js";
 import { paintQueue, setOpen } from "./queue.js";
 import { paintAsk, paintBin } from "./trash.js";
 
@@ -167,10 +168,38 @@ function listed() { return state.view === "trash" ? state.trash : state.jobs; }
 function current() { return listed().find((job) => job.id === state.selected) || null; }
 
 function draftOf(job) {
+  const count = job.page_count || 1;
   const existing = state.drafts[job.id];
-  if (existing && existing.dirty) return existing;
-  const draft = { pages: job.pages || "all", copies: job.copies || 1, dirty: false };
+  // Keep the same object across paints. Replacing it while the buttons still close over the old one drops the click.
+  if (!existing) return storeDraft(job, count);
+  if (existing.dirty) return holdDraft(existing, count);
+  if (sameDraft(existing, job, count)) return existing;
+  return storeDraft(job, count);
+}
+
+function storeDraft(job, count) {
+  const draft = freshDraft(job, count);
   state.drafts[job.id] = draft;
+  return draft;
+}
+
+function sameDraft(draft, job, count) {
+  const read = readPages(job.pages, count);
+  return draft.choice === read.choice && draft.from === read.from && draft.to === read.to && draft.copies === (job.copies || 1) && draft.count === count;
+}
+
+function freshDraft(job, count) {
+  const read = readPages(job.pages, count);
+  const draft = { choice: read.choice, from: read.from, to: read.to, count, copies: job.copies || 1, dirty: false, focus: "" };
+  draft.pages = writePages(draft);
+  return draft;
+}
+
+function holdDraft(draft, count) {
+  draft.count = count;
+  draft.from = clampPage(draft.from, count);
+  draft.to = clampPage(draft.to, count);
+  draft.pages = writePages(draft);
   return draft;
 }
 
@@ -310,51 +339,52 @@ function renderControls() {
     return;
   }
   const draft = draftOf(job);
-  const key = [job.id, job.status, job.can_print, job.can_retry, job.page_count, draft.copies, state.working, state.note].join("|");
+  const key = [job.id, job.status, job.can_print, job.can_retry, job.page_count, draft.choice, draft.from, draft.to, draft.copies, state.working, state.note].join("|");
   if (node.dataset.key === key) return;
-  const typing = document.activeElement && document.activeElement.id === "pages";
-  const caret = typing ? document.activeElement.selectionStart : null;
+  const wasOpen = Boolean(node.querySelector(".page-span.open"));
+  const focus = draft.focus || "";
+  const typing = boundFocus();
+  draft.focus = "";
   node.dataset.key = key;
   node.replaceChildren();
-  if (job.can_print) node.append(settings(job, draft));
+  if (job.can_print) node.append(settings(job, draft, wasOpen));
   if (job.status === "printing" || state.working === "print") node.append(el("button", { class: "go", text: "Printing…", disabled: true }));
   else if (job.can_print || job.can_retry) node.append(action(job));
   if (state.note) node.append(el("p", { class: "note", text: state.note }));
   node.append(deleteRow(job));
-  if (typing) restorePages(caret);
+  restoreFocus(focus, typing, wasOpen);
 }
 
-function settings(job, draft) {
+function settings(job, draft, wasOpen) {
   const row = el("div", { class: "settings" });
-  if (job.page_count > 1) row.append(pagesField(draft, job));
+  if (job.page_count > 1) row.append(paintPages(draft, job, { wasOpen, onChange: () => render() }));
   else if (job.page_count === 1) row.append(el("p", { class: "hint alone", text: "1 page" }));
   row.append(copiesField(job, draft));
   return row;
 }
 
-function pagesField(draft, job) {
-  const wrap = el("label", { class: "field" });
-  wrap.append(el("span", { text: "Pages" }));
-  const input = document.createElement("input");
-  input.id = "pages";
-  input.type = "text";
-  input.value = draft.pages;
-  input.maxLength = 80;
-  input.spellcheck = false;
-  input.autocomplete = "off";
-  input.setAttribute("aria-describedby", "pages-hint");
-  input.addEventListener("input", () => { draft.pages = input.value; draft.dirty = true; });
-  const hint = el("span", { class: "hint", text: job.page_count + " pages. All of them, or a range like 1-3, 5." });
-  hint.id = "pages-hint";
-  wrap.append(input, hint);
-  return wrap;
+function boundFocus() {
+  const field = document.activeElement;
+  if (!field || (field.id !== "page-from" && field.id !== "page-to")) return null;
+  return { id: field.id, caret: field.selectionStart };
 }
 
-function restorePages(caret) {
-  const field = document.getElementById("pages");
+function restoreFocus(focus, typing, wasOpen) {
+  if (focus) {
+    const select = focus === "page-from" || focus === "page-to";
+    if (select && !wasOpen) requestAnimationFrame(() => focusField(focus, null, true));
+    else focusField(focus, null, select);
+    return;
+  }
+  if (typing) focusField(typing.id, typing.caret, false);
+}
+
+function focusField(id, caret, select) {
+  const field = document.getElementById(id);
   if (!field) return;
   field.focus();
-  if (caret != null) field.setSelectionRange(caret, caret);
+  if (caret != null && field.setSelectionRange) field.setSelectionRange(caret, caret);
+  else if (select && field.select) field.select();
 }
 
 function copiesField(job, draft) {
@@ -422,11 +452,12 @@ async function printCurrent() {
   const job = current();
   if (!job || state.working || !job.can_print) return;
   const draft = draftOf(job);
+  const pages = job.page_count > 1 ? writePages(draft) : "all";
   state.working = "print";
   state.note = "";
   render();
   try {
-    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/print", { pages: cleanPages(draft.pages), copies: draft.copies });
+    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/print", { pages, copies: draft.copies });
     if (!body.ok) state.note = body.message || "Please try that again in a moment.";
     else { draft.dirty = false; onJob(body.job); loadPrinter(); return; }
   } catch {
@@ -518,11 +549,6 @@ async function forgetPicked() {
     ensureSelection();
     render();
   }
-}
-
-function cleanPages(value) {
-  const text = String(value || "").trim();
-  return text || "all";
 }
 
 function showToast(message, undoId) {

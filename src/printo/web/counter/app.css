@@ -443,24 +443,24 @@ body { height: 100dvh; overflow: hidden; }
   width: min(100%, calc((100dvh - 230px) * 210 / 297));
   max-height: calc(100dvh - 230px);
   aspect-ratio: 210 / 297;
-  background: white;
-  border-radius: 2px 12px 12px 12px;
+  background: #fff;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 22px 50px rgba(60, 40, 20, 0.12), 0 2px 8px rgba(60, 40, 20, 0.05);
+  /* A hairline is enough for the page to separate from the desk. */
+  border: 1px solid rgba(26, 23, 20, 0.12);
+  box-shadow: none;
 }
 
-.sheet-page::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  border-style: solid;
-  border-width: 0 18px 18px 0;
-  border-color: transparent var(--paper-deep) transparent transparent;
-  pointer-events: none;
+/* The viewer's own dark rim and scrollbar sit on the page edge. Shift them out of sight. */
+.sheet-page iframe {
+  display: block;
+  width: calc(100% + 22px);
+  height: calc(100% + 8px);
+  margin: -4px 0 0 -4px;
+  border: 0;
+  background: #fff;
+  filter: grayscale(1);
 }
-
-.sheet-page iframe { width: 100%; height: 100%; border: 0; background: #fff; filter: grayscale(1) contrast(1.04); }
 
 .caption, .hint { display: block; margin-top: 10px; color: var(--ink-soft); font-size: 0.88rem; }
 
@@ -468,20 +468,93 @@ body { height: 100dvh; overflow: hidden; }
 
 #controls { max-width: none; display: flex; flex-direction: column; gap: 14px; margin-top: 22px; }
 
-.settings { display: flex; flex-wrap: wrap; gap: 22px 28px; align-items: flex-end; }
+.settings { display: flex; flex-direction: column; align-items: flex-start; gap: 22px; }
 
-.field { display: flex; flex-direction: column; gap: 6px; min-width: 9rem; flex: 1; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 
-.field > span:first-child { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+.field.pages { width: min(100%, 17.5rem); }
 
-.field input {
+.field > span:first-child,
+.field-head > span:first-child { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+
+.field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+
+.field-meta { font-size: 0.75rem; font-weight: 400; letter-spacing: 0.01em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.page-choices { display: flex; flex-direction: column; margin-top: 2px; }
+
+.page-choice {
   width: 100%;
-  height: 46px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: white;
-  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 8px 0 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: -0.011em;
+  line-height: 1.3;
+  text-align: left;
+  transition: background 0.16s ease;
 }
+
+.page-choice:hover { background: rgba(26, 23, 20, 0.04); }
+
+.page-choice:active { background: rgba(26, 23, 20, 0.065); }
+
+.page-mark {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid rgba(26, 23, 20, 0.26);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #fffaf7;
+  background: transparent;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.page-choice[aria-checked="true"] .page-mark { background: var(--accent); border-color: var(--accent); }
+
+.page-mark svg { width: 10px; height: 10px; opacity: 0; transform: scale(0.7); transition: opacity 0.16s ease, transform 0.16s ease; }
+
+.page-choice[aria-checked="true"] .page-mark svg { opacity: 1; transform: scale(1); }
+
+.page-span { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.32s cubic-bezier(0.22, 0.8, 0.24, 1); }
+
+.page-span.open { grid-template-rows: 1fr; }
+
+.page-span-clip { overflow: hidden; min-height: 0; }
+
+.page-range { display: flex; align-items: center; gap: 18px; padding: 8px 0 2px 25px; }
+
+.bound { display: flex; align-items: center; gap: 8px; }
+
+.bound span { font-size: 0.78rem; font-weight: 500; letter-spacing: 0.01em; color: var(--ink-soft); }
+
+.bound input {
+  width: 3.1rem;
+  height: 32px;
+  flex: none;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  box-shadow: none;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bound input:focus-visible { outline: none; border-color: var(--ink); }
 
 .stepper { display: flex; align-items: center; gap: 8px; }
 

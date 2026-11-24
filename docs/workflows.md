@@ -60,7 +60,7 @@ The counter screen puts the file list on the left, the print controls beside it,
 
 A job object carries `name`, `status`, `label`, `message`, `page_count`, `pages`, `copies`, `can_print`, and `can_retry`. In the file list, the counter shows only the file name and when it arrived. When a file is selected, `message` can appear under the name for anything that is not ready yet. `label` and `status` stay on the wire for the program and other views; `status` values are `received`, `converting`, `ready`, `printing`, `done`, `failed`.
 
-Pages are 1-based: `all`, `2`, `1-3`, `1-3, 5`. Out of range is refused. Copies are 1 to 20. Pages times copies cannot pass 400 sheets.
+On the counter, pages are one choice: all, even pages only, odd pages only, or a custom from–to range. From and to only appear for a custom range, and they stay between 1 and the last page. The print request is `all`, `odd`, `even`, `2`, or `1-3`. A list such as `1-3, 5` is still accepted. Out of range is refused. Copies are 1 to 20. Pages times copies cannot pass 400 sheets.
 
 Printing a `done` job sends it again. That is the reprint. The printer being off refuses the print and leaves the file ready. A second click while it is already `printing` is refused.
 
