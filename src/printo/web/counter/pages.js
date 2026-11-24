@@ -1,6 +1,8 @@
 /* Which pages to print. One choice: all, even, odd, or a from–to range.
    Page numbers start at 1. The fields never keep a 0 or a page past the end.
-   The italic tally sits under the choices, or under From–To for a custom range.
+   The tally belongs to the choice that is checked: it sits under that row,
+   and under From–To while a custom range is open. It keeps the previous
+   count for one beat when the choice changes, so the line can leave and arrive.
    pageNumbers is the same set the preview shows and the printer receives. */
 
 import { el } from "./dom.js";
@@ -52,12 +54,16 @@ export function clampPage(value, pageCount) {
 
 export function paintPages(draft, job, hooks) {
   draft.count = atLeastOne(job.page_count || draft.count);
+  const previous = draft.anchor || "";
+  const priorCount = draft.shownCount;
+  const animate = moves(previous, draft.choice);
   const wrap = el("div", { class: "field pages" });
-  const span = range(draft, hooks);
-  wrap.append(head(draft.count), choices(draft, hooks));
-  if (draft.choice !== "custom") wrap.append(tallyNode(draft));
-  wrap.append(span);
-  reveal(span, draft, hooks.wasOpen);
+  const group = choices(draft, hooks, previous, priorCount, animate);
+  const span = range(draft, hooks, previous, priorCount, animate);
+  wrap.append(head(draft.count), group, span);
+  settle(group, span, draft, previous, animate);
+  remember(draft, printedPages(draft));
+  draft.anchor = draft.choice;
   return wrap;
 }
 
@@ -78,29 +84,44 @@ function head(count) {
   return row;
 }
 
-function tallyNode(draft) {
-  const phrase = pagesInTotal(printedPages(draft));
-  const shift = draft.shown != null && draft.shown !== phrase && motionOk();
-  draft.shown = phrase;
-  return el("p", {
+function moves(previous, choice) {
+  return Boolean(previous) && previous !== choice && motionOk();
+}
+
+function tallyNode(count, live, shift) {
+  const node = el("p", {
     class: shift ? "page-tally shift" : "page-tally",
-    text: phrase,
-    attrs: { id: "pages-tally", "aria-live": "polite", "aria-atomic": "true" },
+    attrs: live ? { id: "pages-tally", "aria-live": "polite", "aria-atomic": "true" } : { "aria-hidden": "true" },
   });
+  writeTally(node, count);
+  return node;
+}
+
+function writeTally(node, count) {
+  node.replaceChildren(el("span", { class: "page-count", text: String(count) }), el("span", { class: "page-rest", text: tallyRest(count) }));
+}
+
+function tallyRest(count) {
+  return count === 1 ? " page in total" : " pages in total";
 }
 
 function refreshTally(draft) {
   const node = document.getElementById("pages-tally");
   if (!node) return;
-  const phrase = pagesInTotal(printedPages(draft));
-  if (node.textContent === phrase) { draft.shown = phrase; return; }
-  node.textContent = phrase;
-  draft.shown = phrase;
+  const count = printedPages(draft);
+  if (node.textContent === pagesInTotal(count)) { remember(draft, count); return; }
+  writeTally(node, count);
+  remember(draft, count);
   if (!motionOk()) return;
-  // Drop the class and force layout so the fade plays again on the same line.
+  // Drop the class and force layout so the same line can settle again.
   node.classList.remove("shift");
   void node.offsetWidth;
   node.classList.add("shift");
+}
+
+function remember(draft, count) {
+  draft.shownCount = count;
+  draft.shown = pagesInTotal(count);
 }
 
 function motionOk() {
@@ -122,13 +143,76 @@ function ranged(start, end) {
 }
 
 function pagesInTotal(count) {
-  return (count === 1 ? "1 page" : count + " pages") + " in total";
+  return String(count) + tallyRest(count);
 }
 
-function choices(draft, hooks) {
+function choices(draft, hooks, previous, priorCount, animate) {
   const group = el("div", { class: "page-choices", attrs: { role: "radiogroup", "aria-labelledby": "pages-label", "aria-describedby": "pages-tally" } });
-  group.append(...CHOICES.map((item) => choiceButton(item, draft, hooks)));
+  group.append(...CHOICES.map((item) => option(item, draft, hooks, previous, priorCount, animate)));
   return group;
+}
+
+function option(item, draft, hooks, previous, priorCount, animate) {
+  const row = el("div", { class: "page-option", attrs: { "data-choice": item.id } });
+  row.append(choiceButton(item, draft, hooks));
+  if (item.id !== "custom") row.append(choiceNote(item.id, draft, previous, priorCount, animate));
+  return row;
+}
+
+/* open: already under the checked row. arrive: about to open there.
+   leave: still under the row that was checked, holding the old count. shut: no line. */
+function choiceNote(id, draft, previous, priorCount, animate) {
+  const mode = noteMode(id, draft.choice, previous, animate);
+  const open = mode === "open" || mode === "leave";
+  const live = mode === "open" || mode === "arrive";
+  const slot = el("div", { class: open ? "page-note open" : "page-note", attrs: live ? null : { "aria-hidden": "true" } });
+  const clip = el("div", { class: "page-note-clip" });
+  if (mode !== "shut") clip.append(tallyNode(noteCount(mode, draft, priorCount), live, mode === "open" && countChanged(priorCount, draft)));
+  slot.append(clip);
+  return slot;
+}
+
+function noteMode(id, choice, previous, animate) {
+  if (id === choice) return animate ? "arrive" : "open";
+  if (animate && id === previous) return "leave";
+  return "shut";
+}
+
+function noteCount(mode, draft, priorCount) {
+  if (mode === "leave" && priorCount != null) return priorCount;
+  return printedPages(draft);
+}
+
+function countChanged(priorCount, draft) {
+  return priorCount != null && priorCount !== printedPages(draft) && motionOk();
+}
+
+function settle(group, span, draft, previous, animate) {
+  if (!animate) { if (draft.choice === "custom") holdRange(span, true); return; }
+  // Start from the row the line is leaving, then let the two heights trade places.
+  if (previous === "custom") { span.classList.add("open"); const clip = span.querySelector(".page-span-clip"); if (clip) clip.inert = true; }
+  const leave = noteOf(group, previous);
+  const arrive = noteOf(group, draft.choice);
+  glide(() => {
+    if (!span.isConnected) return;
+    if (leave) leave.classList.remove("open");
+    if (arrive) arrive.classList.add("open");
+    holdRange(span, draft.choice === "custom");
+  });
+}
+
+function noteOf(group, id) {
+  return group.querySelector('.page-option[data-choice="' + id + '"] .page-note');
+}
+
+function glide(flip) {
+  requestAnimationFrame(() => { void document.body.offsetHeight; flip(); });
+}
+
+function holdRange(span, open) {
+  const clip = span.querySelector(".page-span-clip");
+  span.classList.toggle("open", open);
+  if (clip) clip.inert = !open;
 }
 
 function choiceButton(item, draft, hooks) {
@@ -169,14 +253,16 @@ function arrowChoice(id, key) {
   return "";
 }
 
-function range(draft, hooks) {
+function range(draft, hooks, previous, priorCount, animate) {
   const span = el("div", { class: "page-span" });
   const clip = el("div", { class: "page-span-clip" });
-  if (draft.choice !== "custom") clip.inert = true;
+  const closing = animate && previous === "custom";
+  if (draft.choice !== "custom" || animate) clip.inert = true;
   const row = el("div", { class: "page-range" });
   row.append(bound(draft, hooks, "from", "From", "page-from"), bound(draft, hooks, "to", "To", "page-to"));
   clip.append(row);
-  if (draft.choice === "custom") clip.append(tallyNode(draft));
+  if (draft.choice === "custom") clip.append(tallyNode(printedPages(draft), true, !animate && countChanged(priorCount, draft)));
+  else if (closing) clip.append(tallyNode(priorCount != null ? priorCount : printedPages(draft), false, false));
   span.append(clip);
   return span;
 }
@@ -242,11 +328,3 @@ function showRange(draft) {
   if (to) to.value = String(draft.to);
 }
 
-function reveal(span, draft, wasOpen) {
-  if (draft.choice !== "custom") return;
-  const clip = span.querySelector(".page-span-clip");
-  const open = () => { span.classList.add("open"); if (clip) clip.inert = false; };
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (wasOpen || reduce) open();
-  else requestAnimationFrame(open);
-}

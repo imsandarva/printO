@@ -657,7 +657,7 @@ body { height: 100dvh; overflow: hidden; }
 
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 
-.field.pages { width: min(100%, 17.5rem); }
+.field.pages { width: min(100%, 17.5rem); --page-inset: 27px; }
 
 .field > span:first-child,
 .field-head > span:first-child { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
@@ -666,21 +666,54 @@ body { height: 100dvh; overflow: hidden; }
 
 .field-meta { font-size: 0.75rem; font-weight: 400; letter-spacing: 0.01em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 
+/* The count is the same voice as the choice it belongs to: roman, the same size,
+   the figure a step stronger than the words. A short gap ties it to that row;
+   a longer one lets the next choice start clean. Both gaps live inside the
+   note, so they leave with the line. */
 .page-tally {
   margin: 0;
-  padding: 4px 0 0 25px;
-  font-style: italic;
-  font-size: 0.8125rem;
+  padding: 4px 12px 18px var(--page-inset);
+  font-style: normal;
+  font-size: 0.9375rem;
   font-weight: 400;
-  letter-spacing: 0.008em;
-  line-height: 1.35;
-  color: var(--ink-soft);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.page-count {
+  font-weight: 500;
+  letter-spacing: -0.032em;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
-.page-range + .page-tally { padding-top: 8px; padding-bottom: 2px; }
+.page-rest { font-weight: 400; letter-spacing: -0.016em; }
 
-.page-tally.shift { animation: tally-in 0.28s cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+.page-note {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.44s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.page-note.open { grid-template-rows: 1fr; }
+
+.page-note-clip { overflow: hidden; min-height: 0; }
+
+.page-note .page-tally {
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.2s ease, transform 0.44s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.page-note.open .page-tally {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.07s, 0.03s;
+}
+
+.page-tally.shift { animation: tally-in 0.34s cubic-bezier(0.32, 0.72, 0, 1) both; }
 
 .page-choices { display: flex; flex-direction: column; margin-top: 2px; }
 
@@ -698,11 +731,13 @@ body { height: 100dvh; overflow: hidden; }
   color: var(--ink);
   font-size: 0.9375rem;
   font-weight: 400;
-  letter-spacing: -0.011em;
-  line-height: 1.3;
+  letter-spacing: -0.018em;
+  line-height: 1.25;
   text-align: left;
   transition: background 0.16s ease;
 }
+
+.page-choice[aria-checked="true"] .page-name { font-weight: 500; letter-spacing: -0.022em; }
 
 .page-choice:hover { background: rgba(26, 23, 20, 0.04); }
 
@@ -727,13 +762,17 @@ body { height: 100dvh; overflow: hidden; }
 
 .page-choice[aria-checked="true"] .page-mark svg { opacity: 1; transform: scale(1); }
 
-.page-span { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.32s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.page-span { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.44s cubic-bezier(0.32, 0.72, 0, 1); }
 
 .page-span.open { grid-template-rows: 1fr; }
 
 .page-span-clip { overflow: hidden; min-height: 0; }
 
-.page-range { display: flex; align-items: center; gap: 18px; padding: 8px 0 2px 25px; }
+.page-range { display: flex; align-items: center; gap: 18px; padding: 8px 0 0 var(--page-inset); }
+
+.page-span .page-tally { padding: 10px 12px 2px var(--page-inset); transition: opacity 0.2s ease; }
+
+.page-span:not(.open) .page-tally { opacity: 0; }
 
 .bound { display: flex; align-items: center; gap: 8px; }
 
@@ -923,7 +962,7 @@ body { height: 100dvh; overflow: hidden; }
 .toast-undo:hover { color: #fff; }
 
 @keyframes tally-in {
-  from { opacity: 0; transform: translateY(2px); }
+  from { opacity: 0.45; transform: translateY(3px); }
   to { opacity: 1; transform: none; }
 }
 
@@ -961,6 +1000,7 @@ body { height: 100dvh; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .fit input[type="range"]::-webkit-slider-thumb,
   .fit input[type="range"]::-moz-range-thumb { transition: none; }
+  .page-note, .page-span, .page-note .page-tally, .page-span .page-tally { transition: none; }
   .page-tally.shift { animation: none; }
 }
 
