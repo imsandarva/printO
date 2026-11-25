@@ -2,6 +2,7 @@
 
 import { el } from "./dom.js";
 
+
 const MIN_THUMB = 44;
 const NUDGE = 48;
 
