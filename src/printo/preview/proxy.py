@@ -40,6 +40,9 @@ class ProxyDesk:
     def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100) -> dict:
         return _json(self, "POST", f"jobs/{job_id}/print", {"pages": pages, "copies": copies, "fit": fit})["job"]
 
+    def citizenship(self, ids: list[str]) -> dict:
+        return _json(self, "POST", "citizenship", {"ids": ids})["job"]
+
     def retry(self, job_id: str) -> dict:
         return _json(self, "POST", f"jobs/{job_id}/retry", {})["job"]
 

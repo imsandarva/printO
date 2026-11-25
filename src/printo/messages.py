@@ -168,6 +168,26 @@ def compose_failed() -> str:
     return "This file couldn't be prepared for the printer. Please try again."
 
 
+def citizenship_choose() -> str:
+    return "Choose two files, one for the top and one for just below."
+
+
+def citizenship_same() -> str:
+    return "Choose two different files, one for the top and one for just below."
+
+
+def citizenship_wait() -> str:
+    return "One of these files isn't ready yet. Give it a moment, then try again."
+
+
+def citizenship_pages() -> str:
+    return "Each file needs to be a single page. One of these has more."
+
+
+def citizenship_failed() -> str:
+    return "Those two couldn't be placed on one page. Please try again."
+
+
 def removed() -> str:
     return "Deleted."
 

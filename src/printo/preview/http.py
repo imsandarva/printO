@@ -22,6 +22,7 @@ _PRINT = re.compile(r"^/admin/jobs/([0-9a-f]{32})/print$")
 _RETRY = re.compile(r"^/admin/jobs/([0-9a-f]{32})/retry$")
 _TRASH = re.compile(r"^/admin/jobs/([0-9a-f]{32})/trash$")
 _RESTORE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/restore$")
+_CITIZENSHIP = "/admin/citizenship"
 _JSON = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
 
 
@@ -71,6 +72,9 @@ def route(handler: Handler, method: str, path: str) -> None:
     if (found := _FILE.fullmatch(path)) and method == "GET":
         send_bytes(handler, 200, "application/pdf", handler.server.desk.file(found.group(1)), _JSON)
         return
+    if path == _CITIZENSHIP and method == "POST":
+        send_citizenship(handler)
+        return
     if (found := _PRINT.fullmatch(path)) and method == "POST":
         send_print(handler, found.group(1))
         return
@@ -115,6 +119,14 @@ def send_print(handler: Handler, job_id: str) -> None:
     body = read_json(handler)
     pages, copies = body.get("pages", "all"), body.get("copies", 1)
     send_json(handler, {"ok": True, "job": handler.server.desk.print_job(job_id, pages, copies, body.get("fit", 100))})
+
+
+def send_citizenship(handler: Handler) -> None:
+    body = read_json(handler)
+    ids = body.get("ids")
+    if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+        raise UserError(validation())
+    send_json(handler, {"ok": True, "job": handler.server.desk.citizenship(ids)})
 
 
 def send_printer(handler: Handler) -> None:
@@ -236,7 +248,7 @@ def path_of(handler: Handler) -> str:
 
 def found_any(path: str) -> bool:
     return bool(
-        _ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PRINT.fullmatch(path) or _RETRY.fullmatch(path)
+        path == _CITIZENSHIP or _ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PRINT.fullmatch(path) or _RETRY.fullmatch(path)
         or _TRASH.fullmatch(path) or _RESTORE.fullmatch(path)
     )
 

@@ -1,6 +1,8 @@
 """Sample files for the counter. Clicks change this list only; the printer is never asked."""
 
+import re
 import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from printo.clock import stamp
@@ -13,9 +15,12 @@ from printo.domain.status import CONVERTING, DONE, FAILED, PRINTING, READY, RECE
 from printo.errors import UserError
 from printo.messages import (
     already_printing, arrived, convert_failed, in_trash, no_retry, not_found, not_ready, office_failed, preparing, present,
-    printing, ready, rejected, removed, removed_but_printer, removed_event, sent, still_kept, trashed, trashed_but_printer,
+    citizenship_choose, citizenship_pages, citizenship_same, citizenship_wait, printing, ready, rejected, removed,
+    removed_but_printer, removed_event, sent, still_kept, trashed, trashed_but_printer,
 )
 from printo.preview.paper import sheet
+
+_PAIR_NAME = re.compile(r"^Citizenship_(\d+)\.pdf$")
 
 
 class Scene:
@@ -69,6 +74,31 @@ class Scene:
             self._arm(job_id, self._finish_print)
         self._emit("job", present(updated))
         return present(updated)
+
+    def citizenship(self, ids: list[str]) -> dict:
+        if len(ids) != 2 or not all(isinstance(item, str) for item in ids):
+            raise UserError(citizenship_choose())
+        if ids[0] == ids[1]:
+            raise UserError(citizenship_same())
+        with self._lock:
+            for job_id in ids:
+                job = self._get(job_id)
+                if job.trashed_at:
+                    raise UserError(in_trash(), 409)
+                if not can_print(job):
+                    raise UserError(citizenship_wait(), 409)
+                if job.page_count != 1:
+                    raise UserError(citizenship_pages())
+            moment = stamp(datetime.now(timezone.utc))
+            created = Job(
+                id=uuid.uuid4().hex, original_name=self._next_pair_name(), kind=PDF, source_ext=".pdf", status=READY,
+                failure_stage=None, message=ready(), byte_size=48_000, page_count=1, pages_spec="all", copies=1,
+                cups_job_id=None, created_at=moment, updated_at=moment, delete_after=None, trashed_at=None,
+            )
+            self._jobs.append(created)
+        result = present(created)
+        self._emit("job", result)
+        return result
 
     def retry(self, job_id: str) -> dict:
         with self._lock:
@@ -153,6 +183,14 @@ class Scene:
 
     def _find(self, job_id: str) -> Job | None:
         return next((job for job in self._jobs if job.id == job_id), None)
+
+    def _next_pair_name(self) -> str:
+        highest = 0
+        for job in self._jobs:
+            match = _PAIR_NAME.fullmatch(job.original_name)
+            if match:
+                highest = max(highest, int(match.group(1)))
+        return f"Citizenship_{highest + 1}.pdf"
 
 
 def _samples() -> list[Job]:

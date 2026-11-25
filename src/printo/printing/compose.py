@@ -74,7 +74,7 @@ def _center(writer: PdfWriter, page, factor: float) -> None:
     blank = writer.add_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
     shift = Transformation().scale(scale).translate(ox - left * scale, oy - bottom * scale)
     blank.merge_transformed_page(page, shift, expand=False)
-    _cut_to_sheet(blank)
+    clip_sheet(blank)
 
 
 def _placement(width: float, height: float, factor: float) -> tuple[float, float, float]:
@@ -83,7 +83,7 @@ def _placement(width: float, height: float, factor: float) -> tuple[float, float
     return scale, (A4_WIDTH - width * scale) / 2, (A4_HEIGHT - height * scale) / 2
 
 
-def _cut_to_sheet(page) -> None:
+def clip_sheet(page) -> None:
     # Anything past the sheet is dropped, the same way the preview hides it.
     contents = page.get_contents()
     reference = page.indirect_reference

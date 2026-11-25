@@ -85,28 +85,64 @@ function spoken(node) {
 function card(job, model, now) {
   const picking = Boolean(model.picking);
   const picks = model.picks;
+  const born = model.born && model.born.id === job.id ? model.born : null;
+  const place = model.order ? model.order.get(job.id) || 0 : 0;
   const on = picking ? Boolean(picks && picks.has(job.id)) : job.id === model.selected;
-  const classes = ["card", picking ? "picking" : "", on ? "on" : "", !picking && model.fresh(job.id) ? "fresh" : ""].filter(Boolean).join(" ");
+  const classes = [
+    "card", picking ? "picking" : "", on ? "on" : "", born ? "born" : "",
+    born && !born.painted ? "arrive" : "", born && born.glow ? "glow" : "",
+    !born && !picking && model.fresh(job.id) ? "fresh" : "",
+  ].filter(Boolean).join(" ");
   const button = el("button", {
     class: classes,
     attrs: { "aria-pressed": on ? "true" : "false" },
     on: { click: () => model.onSelect(job.id) },
   });
+  if (born) button.dataset.born = job.id;
+  if (place === 1) button.setAttribute("aria-label", (job.name || "File") + ", top");
+  if (place === 2) button.setAttribute("aria-label", (job.name || "File") + ", below");
   const body = el("div", { class: "card-body" });
   const top = el("div", { class: "card-top" });
-  top.append(
-    el("span", { class: "num", text: job.name || "Untitled", attrs: { title: job.name || "" } }),
-    el("span", { class: "when", text: whenLabel(job.created_at, now) }),
-  );
+  const name = born ? born.shown : (job.name || "Untitled");
+  const num = el("span", { class: born && !born.glow ? "num writing" : "num", text: name, attrs: { title: born ? born.name : (job.name || "") } });
+  if (born && !born.glow) num.append(caret());
+  top.append(num, el("span", { class: "when", text: whenLabel(job.created_at, now) }));
   body.append(top);
-  if (picking) button.append(tick(on));
+  if (picking) button.append(tick(on, place));
   button.append(body);
+  if (born && born.glow && born.glowAt) holdGlow(button, born.glowAt);
   return button;
 }
 
-function tick(on) {
+export function writeBorn(born) {
+  if (!born) return false;
+  const card = document.querySelector('[data-born="' + CSS.escape(born.id) + '"]');
+  if (!card) return false;
+  card.classList.toggle("glow", Boolean(born.glow));
+  const num = card.querySelector(".num");
+  if (!num) return false;
+  num.classList.toggle("writing", !born.glow);
+  num.replaceChildren(document.createTextNode(born.shown));
+  if (!born.glow && born.shown.length < born.name.length) num.append(caret());
+  if (born.glow && born.glowAt) holdGlow(card, born.glowAt);
+  return true;
+}
+
+function holdGlow(card, at) {
+  const delay = -(performance.now() - at) + "ms";
+  card.style.animationDelay = delay;
+  const num = card.querySelector(".num");
+  if (num) num.style.animationDelay = delay;
+}
+
+function caret() {
+  return el("span", { class: "caret", attrs: { "aria-hidden": "true" } });
+}
+
+function tick(on, place) {
   const mark = el("span", { class: on ? "tick on" : "tick", attrs: { "aria-hidden": "true" } });
-  if (on) mark.append(checkIcon());
+  if (place) mark.append(el("span", { class: "ord", text: String(place) }));
+  else if (on) mark.append(checkIcon());
   return mark;
 }
 

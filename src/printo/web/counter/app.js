@@ -1,11 +1,13 @@
 /* The counter. The live stream is only a nudge; the job list is what we show.
    The preview is grey because this printer is black and white. */
 
+import { holdProcessing, isPairName, paintBar, paintProcessing, playName } from "./citizenship.js";
+import { revealToday } from "./dates.js";
 import { el } from "./dom.js";
 import { clampFit } from "./fit.js";
 import { trashIcon } from "./icons.js";
 import { clampPage, pageNumbers, paintPages, readPages, writePages } from "./pages.js";
-import { paintQueue, setOpen } from "./queue.js";
+import { paintQueue, setOpen, writeBorn } from "./queue.js";
 import { closeSheets, focusSheets, showSheets } from "./sheets.js";
 import { paintAsk, paintBin } from "./trash.js";
 
@@ -24,6 +26,11 @@ const state = {
   picking: false,
   picks: new Set(),
   ask: false,
+  pairing: false,
+  pair: [],
+  awaitingPair: false,
+  pairSeen: new Set(),
+  born: null,
   printer: null,
   printerLost: false,
   offline: false,
@@ -87,7 +94,7 @@ function take(jobs, bin, announce) {
     ids.add(job.id);
     if (!state.seen.has(job.id)) {
       state.seen.add(job.id);
-      if (announce) { arrived = true; state.fresh.set(job.id, Date.now()); }
+      if (announce && !heldPair(job)) { arrived = true; state.fresh.set(job.id, Date.now()); }
     }
   }
   for (const job of bin) { ids.add(job.id); state.seen.add(job.id); }
@@ -116,7 +123,10 @@ function onJob(job) {
   else list.unshift(job);
   list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   if (!state.trash.length) state.picking = false;
-  if (arrived) { state.fresh.set(job.id, Date.now()); chime(); window.setTimeout(render, 2600); }
+  if (arrived) {
+    if (!heldPair(job)) { state.fresh.set(job.id, Date.now()); chime(); }
+    window.setTimeout(render, 2600);
+  }
   if (state.selected === job.id && job.status !== "ready") state.note = "";
   ensureSelection();
   render();
@@ -126,21 +136,25 @@ function dropLocal(id) {
   state.jobs = state.jobs.filter((job) => job.id !== id);
   state.trash = state.trash.filter((job) => job.id !== id);
   state.picks.delete(id);
+  state.pair = state.pair.filter((item) => item !== id);
   state.seen.delete(id);
   forget(id);
   if (!state.trash.length) state.picking = false;
   ensureSelection();
 }
 
+let stopName = () => {};
+
 function forget(id) {
   delete state.previews[id];
   delete state.drafts[id];
   state.fresh.delete(id);
+  if (state.born && state.born.id === id) { stopName(); state.born = null; }
   if (state.selected === id) { state.selected = null; resetPaper(); }
 }
 
 function ensureSelection() {
-  if (state.picking) return;
+  if (state.picking || state.pairing) return;
   const jobs = listed();
   if (state.selected && jobs.some((job) => job.id === state.selected)) return;
   const waiting = state.view === "files" ? jobs.find((job) => job.status !== "done") : null;
@@ -149,6 +163,16 @@ function ensureSelection() {
 }
 
 function select(id) {
+  if (state.view === "files" && state.pairing) {
+    const index = state.pair.indexOf(id);
+    if (index < 0 && state.pair.length >= 2) return;
+    if (index >= 0) state.pair.splice(index, 1);
+    else state.pair.push(id);
+    state.note = "";
+    if (state.selected !== id) { state.selected = id; resetPaper(); }
+    render();
+    return;
+  }
   if (state.view === "trash" && state.picking) {
     if (state.picks.has(id)) state.picks.delete(id);
     else state.picks.add(id);
@@ -163,7 +187,16 @@ function select(id) {
   render();
 }
 
-function listed() { return state.view === "trash" ? state.trash : state.jobs; }
+function listed() {
+  const jobs = state.view === "trash" ? state.trash : state.jobs;
+  // Hold the new sheet back until its name can be written in, instead of popping in finished.
+  if (state.view === "trash" || !state.awaitingPair) return jobs;
+  return jobs.filter((job) => state.pairSeen.has(job.id) || !isPairName(job.name));
+}
+
+function heldPair(job) {
+  return state.awaitingPair && isPairName(job.name) && !state.pairSeen.has(job.id);
+}
 
 function current() { return listed().find((job) => job.id === state.selected) || null; }
 
@@ -208,6 +241,7 @@ function render() {
   renderIntro();
   renderPaper();
   renderControls();
+  renderPair();
   renderPrinter();
   renderToast();
   renderBin();
@@ -219,14 +253,16 @@ function renderQueue() {
   const root = document.getElementById("queue");
   if (root) root.setAttribute("aria-label", trash ? "Trash" : "Files");
   paintQueue(root, {
-    jobs: trash ? state.trash : state.jobs,
+    jobs: listed(),
     selected: state.selected,
     folds: trash ? state.trashFolds : state.folds,
     fresh: trash ? () => false : isFresh,
     onSelect: select,
     onToggle: (id, open) => toggleFold(id, open, trash),
-    picking: trash && state.picking,
-    picks: state.picks,
+    picking: (trash && state.picking) || (!trash && state.pairing),
+    picks: trash ? state.picks : new Set(state.pair),
+    order: !trash && state.pairing ? new Map(state.pair.map((id, index) => [id, index + 1])) : null,
+    born: trash ? null : state.born,
     waiting: !trash,
   });
 }
@@ -246,6 +282,18 @@ function isFresh(id) {
 
 function renderIntro() {
   const intro = document.getElementById("intro");
+  if (state.view === "files" && state.pairing) {
+    const count = state.pair.length;
+    const key = "pair\n" + count + "\n" + state.note;
+    if (intro.dataset.key === key) return;
+    intro.dataset.key = key;
+    const title = count === 0 ? "Choose two files" : count === 1 ? "Choose one more" : "Front and back";
+    const body = state.note || (count === 2 ? "They'll share one page." : "The first sits above the second.");
+    const line = el("p", { class: state.note ? "message" : "quiet", text: body });
+    if (state.note) line.dataset.status = "failed";
+    intro.replaceChildren(el("h1", { class: "ticket", text: title }), line);
+    return;
+  }
   if (state.view === "trash" && state.picking) {
     const count = state.picks.size;
     const key = "picking\n" + count;
@@ -345,6 +393,10 @@ function rememberFit(id, fit) {
 
 function renderControls() {
   const node = document.getElementById("controls");
+  if (state.view === "files" && state.pairing) {
+    if (node.dataset.key !== "pairing") { node.dataset.key = "pairing"; node.replaceChildren(); }
+    return;
+  }
   if (state.view === "trash") { renderTrashControls(node); return; }
   const job = current();
   if (!job) {
@@ -611,6 +663,8 @@ function renderAsk() {
 function openTrash() {
   if (state.view === "trash" || state.working) return;
   state.view = "trash";
+  state.pairing = false;
+  state.pair = [];
   state.picking = false;
   state.picks.clear();
   state.ask = false;
@@ -677,7 +731,101 @@ function closeAsk() {
 function onKey(event) {
   if (event.key !== "Escape") return;
   if (state.ask) { event.preventDefault(); closeAsk(); return; }
+  if (state.pairing) { event.preventDefault(); cancelPairing(); return; }
   if (state.picking) { event.preventDefault(); stopPicking(); }
+}
+
+function renderPair() {
+  paintBar(document.getElementById("pair"), {
+    pairing: state.pairing,
+    count: state.pair.length,
+    busy: state.working === "pair",
+    onStart: startPairing,
+    onCancel: cancelPairing,
+    onDone: finishPairing,
+  });
+}
+
+function startPairing() {
+  if (state.working) return;
+  state.view = "files";
+  state.picking = false;
+  state.picks.clear();
+  state.ask = false;
+  state.pairing = true;
+  state.pair = [];
+  state.note = "";
+  if (!state.jobs.some((job) => job.id === state.selected)) {
+    state.selected = (state.jobs[0] || {}).id || null;
+    resetPaper();
+  }
+  const queue = document.getElementById("queue");
+  if (queue) queue.scrollTop = 0;
+  render();
+}
+
+function cancelPairing() {
+  if (state.working === "pair") return;
+  state.pairing = false;
+  state.pair = [];
+  state.awaitingPair = false;
+  state.note = "";
+  ensureSelection();
+  render();
+}
+
+async function finishPairing() {
+  if (state.working || state.pair.length !== 2) return;
+  const ids = state.pair.slice();
+  state.working = "pair";
+  state.note = "";
+  state.pairSeen = new Set(state.jobs.map((job) => job.id));
+  state.awaitingPair = true;
+  render();
+  const release = holdProcessing(paintProcessing);
+  let body = null;
+  try { body = await sendJSON("POST", "/admin/citizenship", { ids }); }
+  catch { body = null; }
+  await release();
+  if (!body || !body.ok || !body.job) {
+    state.working = "";
+    state.awaitingPair = false;
+    state.note = (body && body.message) || "Please try that again in a moment.";
+    render();
+    return;
+  }
+  revealPair(body.job);
+}
+
+function revealPair(job) {
+  stopName();
+  const seen = state.seen.has(job.id);
+  state.pairing = false;
+  state.pair = [];
+  state.awaitingPair = false;
+  state.working = "";
+  state.note = "";
+  state.born = { id: job.id, name: job.name || "Citizenship_1.pdf", shown: "", glow: false, painted: false, glowAt: 0 };
+  state.selected = job.id;
+  resetPaper();
+  revealToday(state.folds, new Date());
+  onJob(job);
+  if (seen) chime();
+  const card = document.querySelector('[data-born="' + CSS.escape(job.id) + '"]');
+  if (card) card.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  if (state.born) state.born.painted = true;
+  stopName = playName(state.born, drawBorn, () => endBorn(job.id));
+}
+
+function drawBorn() {
+  if (!state.born || writeBorn(state.born)) return;
+  renderQueue();
+}
+
+function endBorn(id) {
+  if (!state.born || state.born.id !== id) return;
+  state.born = null;
+  renderQueue();
 }
 
 function renderPrinter() {

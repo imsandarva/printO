@@ -7,9 +7,54 @@ body { height: 100dvh; overflow: hidden; }
 .top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   padding: 18px 28px 14px;
 }
+
+.pair { flex: none; display: flex; justify-content: flex-end; align-items: center; min-height: 40px; }
+
+.citizenship, .pill {
+  appearance: none;
+  border: 1px solid rgba(26, 23, 20, 0.08);
+  height: 36px;
+  padding: 0 15px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.citizenship {
+  background: rgba(255, 252, 247, 0.9);
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(255, 252, 247, 0.95) inset, 0 8px 18px rgba(70, 48, 24, 0.06);
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  animation: pair-in 0.34s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+
+.citizenship:hover { background: #fff; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 10px 22px rgba(70, 48, 24, 0.08); }
+
+.citizenship:active { transform: scale(0.98); }
+
+.pair-live { display: flex; align-items: center; gap: 6px; animation: pair-in 0.34s cubic-bezier(0.22, 0.8, 0.24, 1); }
+
+.pill { min-width: 76px; transition: background 0.22s ease, color 0.22s ease, box-shadow 0.22s ease, transform 0.18s ease, border-color 0.22s ease; }
+
+.pill.cancel { background: transparent; border-color: transparent; color: var(--ink-soft); }
+
+.pill.cancel:hover { background: rgba(26, 23, 20, 0.05); color: var(--ink); }
+
+.pill.cancel:active, .pill.done:active:not(:disabled) { transform: scale(0.98); }
+
+.pill.done { background: rgba(26, 23, 20, 0.07); border-color: transparent; color: rgba(26, 23, 20, 0.3); }
+
+.pill.done:not(:disabled) { background: var(--ink); color: var(--paper); box-shadow: 0 8px 18px rgba(26, 23, 20, 0.16); }
+
+.pill.done:not(:disabled):hover { background: #2a241f; }
+
+.pill:disabled { cursor: default; transform: none; }
 
 .printer {
   position: fixed;
@@ -343,6 +388,10 @@ body:has(#toast) .printer { bottom: 78px; }
 
 .tick svg { width: 12px; height: 12px; }
 
+.tick .ord { font-size: 0.72rem; font-weight: 650; letter-spacing: -0.04em; line-height: 1; }
+
+.tick.on .ord { animation: ord-in 0.22s cubic-bezier(0.22, 0.8, 0.24, 1); }
+
 .card.picking.on { background: rgba(184, 90, 42, 0.08); box-shadow: none; }
 
 .card.picking.on::before { content: none; }
@@ -365,6 +414,47 @@ body:has(#toast) .printer { bottom: 78px; }
 }
 
 .card.fresh { animation: rise 0.4s ease; }
+
+.card.arrive { animation: settle 0.5s cubic-bezier(0.22, 0.8, 0.24, 1); }
+
+.card.born .num {
+  border-radius: 8px;
+  padding: 0 7px;
+  min-width: 11.5ch;
+  min-height: 1.35em;
+  background: rgba(255, 252, 247, 0.94);
+  box-shadow: inset 0 0 0 1px rgba(26, 23, 20, 0.12), 0 1px 0 rgba(255, 255, 255, 0.85);
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 0.92em;
+  margin-left: 1px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: translateY(1px);
+  vertical-align: text-bottom;
+  animation: caret 1.05s steps(1) infinite;
+}
+
+.card.glow {
+  background: rgba(31, 107, 69, 0.08);
+  box-shadow: inset 0 0 0 1.5px rgba(20, 110, 64, 0.95), inset 0 0 22px rgba(31, 107, 69, 0.2);
+  animation: born-glow 2s cubic-bezier(0.22, 0.8, 0.24, 1) forwards;
+}
+
+.card.glow.on::before { background: var(--good); }
+
+.card.glow .num {
+  color: #0e6a3a;
+  background: rgba(255, 252, 247, 0.96);
+  box-shadow: 0 0 0 1.5px rgba(20, 110, 64, 1), 0 0 16px rgba(31, 107, 69, 0.5);
+  text-shadow: 0 0 12px rgba(31, 107, 69, 0.35);
+  animation: name-glow 2s cubic-bezier(0.22, 0.8, 0.24, 1) forwards;
+}
 
 /* A hairline between files in one day. It yields when a row is selected or under the pointer, so it never cuts the highlight. */
 .card + .card::after {
@@ -882,6 +972,36 @@ body:has(#toast) .printer { bottom: 78px; }
   animation: veil-in 0.2s ease;
 }
 
+.processing {
+  z-index: 40;
+  background: rgba(243, 239, 230, 0.8);
+}
+
+.processing-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  animation: ask-in 0.42s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+
+.processing-card p {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 1.5rem;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.spin {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(26, 23, 20, 0.12);
+  border-top-color: var(--ink);
+  animation: spin 0.7s linear infinite;
+}
+
 .ask {
   width: min(22rem, 100%);
   padding: 26px 24px 18px;
@@ -997,6 +1117,41 @@ body:has(#toast) .printer { bottom: 78px; }
   50% { opacity: 0.35; }
 }
 
+@keyframes pair-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes settle {
+  from { opacity: 0; transform: translateY(-7px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ord-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes caret {
+  50% { opacity: 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes born-glow {
+  0% { box-shadow: inset 0 0 0 0 rgba(31, 107, 69, 0); background: transparent; }
+  12%, 78% { box-shadow: inset 0 0 0 1.5px rgba(20, 110, 64, 0.95), inset 0 0 22px rgba(31, 107, 69, 0.22); background: rgba(31, 107, 69, 0.08); }
+  100% { box-shadow: inset 0 0 0 0 rgba(31, 107, 69, 0); background: transparent; }
+}
+
+@keyframes name-glow {
+  0% { color: var(--ink); box-shadow: inset 0 0 0 1px rgba(26, 23, 20, 0.12); text-shadow: none; }
+  12%, 78% { color: #0e6a3a; box-shadow: 0 0 0 1.5px rgba(20, 110, 64, 1), 0 0 16px rgba(31, 107, 69, 0.5); text-shadow: 0 0 12px rgba(31, 107, 69, 0.35); }
+  100% { color: var(--ink); box-shadow: inset 0 0 0 0 rgba(31, 107, 69, 0); text-shadow: none; }
+}
+
 @media (max-width: 980px) {
   .desk { grid-template-columns: 1fr; }
   .sheet-frame { width: min(100%, 340px); }
@@ -1010,6 +1165,7 @@ body:has(#toast) .printer { bottom: 78px; }
   .fit input[type="range"]::-moz-range-thumb { transition: none; }
   .page-note, .page-span, .page-note .page-tally, .page-span .page-tally { transition: none; }
   .page-tally.shift { animation: none; }
+  .citizenship, .pair-live, .card.arrive, .card.glow, .card.glow .num, .tick.on .ord, .caret, .spin, .processing-card { animation: none; }
 }
 
 @media (max-width: 860px) {

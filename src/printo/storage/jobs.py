@@ -1,5 +1,6 @@
 """The queue. Status changes happen inside one write transaction, or they don't happen."""
 
+import re
 import sqlite3
 from collections.abc import Iterable
 
@@ -8,8 +9,11 @@ from printo.domain.job import ID_RE, Job, display_name
 from printo.domain.kinds import KINDS
 from printo.domain.status import ALL
 from printo.errors import UserError
-from printo.messages import arrived, try_again, validation
+from printo.messages import arrived, ready, try_again, validation
 from printo.storage.database import Database
+
+# Chosen in the same write as the row, so two clicks cannot both take Citizenship_1.pdf.
+_PAIR_NAME = re.compile(r"^Citizenship_(\d+)\.pdf$")
 
 _FIELDS = frozenset({
     "message", "failure_stage", "page_count", "pages_spec", "copies", "cups_job_id", "delete_after",
@@ -28,6 +32,21 @@ class JobStore:
             except sqlite3.IntegrityError:
                 continue
         raise UserError(try_again(), 503)
+
+    def insert_ready(self, job_id: str, kind: str, source_ext: str, byte_size: int, page_count: int) -> Job:
+        if kind not in KINDS or source_ext not in {".pdf"} or not ID_RE.fullmatch(job_id) or byte_size < 1 or page_count < 1:
+            raise UserError(try_again(), 503)
+        moment = stamp(self.clock.now())
+        with self.db.transaction() as conn:
+            name = _next_pair_name(conn)
+            conn.execute(
+                """INSERT INTO jobs (
+                    id, original_name, kind, source_ext, status, failure_stage, message,
+                    byte_size, page_count, pages_spec, copies, cups_job_id, created_at, updated_at, delete_after
+                ) VALUES (?, ?, ?, ?, 'ready', NULL, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)""",
+                (job_id, name, kind, source_ext, ready(), byte_size, page_count, moment, moment),
+            )
+            return _job(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
 
     def get(self, job_id: str) -> Job | None:
         if not ID_RE.fullmatch(job_id or ""):
@@ -122,6 +141,15 @@ class JobStore:
                 (job_id, display_name(original_name), kind, source_ext, arrived(), byte_size, moment, moment),
             )
             return _job(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
+
+
+def _next_pair_name(conn: sqlite3.Connection) -> str:
+    highest = 0
+    for row in conn.execute("SELECT original_name FROM jobs"):
+        match = _PAIR_NAME.fullmatch(row["original_name"] or "")
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return f"Citizenship_{highest + 1}.pdf"
 
 
 def _job(row: sqlite3.Row) -> Job:

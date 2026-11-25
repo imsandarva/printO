@@ -107,6 +107,14 @@ function openByDefault(kind, key, now) {
 
 function foldId(kind, key) { return kind[0] + ":" + key; }
 
+export function revealToday(folds, now) {
+  const today = slotOf(now.toISOString(), now);
+  for (const id of [foldId("year", today.y), foldId("month", today.m), foldId("day", today.d)]) {
+    folds.shut.delete(id);
+    folds.forced.add(id);
+  }
+}
+
 function sameDay(date, now) {
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
 }

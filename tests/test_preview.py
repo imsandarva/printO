@@ -36,6 +36,10 @@ def test_counter_opens_with_sample_files():
         assert _open(preview.url.replace("/admin/", "/"))[0] == 404
         jobs = _json(_open(f"{preview.url}jobs"))
         assert jobs["ok"] is True
+        passport = next(job for job in jobs["jobs"] if job["name"] == "Passport photo.jpg")
+        invitation = next(job for job in jobs["jobs"] if job["name"] == "Invitation.pdf")
+        citizenship = _json(_open(f"{preview.url}citizenship", {"ids": [passport["id"], invitation["id"]]}))
+        assert citizenship["job"]["name"] == "Citizenship_1.pdf" and citizenship["job"]["page_count"] == 1
         ready = next(job for job in jobs["jobs"] if job["name"] == "School admission form.pdf")
         assert ready["can_print"] is True and ready["page_count"] == 4
         bad = _json(_open(f"{preview.url}jobs/{ready['id']}/print", {"pages": "99", "copies": 1}))

@@ -20,6 +20,19 @@ _MARGIN_MM = 10
 _STACKED = "TIFF"
 
 
+def load_rgb(source: Path) -> Image.Image:
+    """One upright RGB photo. The caller closes it."""
+    try:
+        with Image.open(source) as image:
+            return rgb_image(ImageOps.exif_transpose(image) or image)
+    except Exception:
+        raise UserError(damaged()) from None
+
+
+def rgb_image(image: Image.Image) -> Image.Image:
+    return _rgb(image)
+
+
 def prepare_image(source: Path, dest: Path, max_sheets: int) -> Prepared:
     frames = _frames(source, max_sheets)
     dest.parent.mkdir(parents=True, exist_ok=True)

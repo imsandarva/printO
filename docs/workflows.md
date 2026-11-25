@@ -53,6 +53,7 @@ The counter screen puts the file list on the left, the print controls beside it,
 | `GET /admin/jobs/{id}` | One job. |
 | `GET /admin/jobs/{id}/file` | The prepared PDF, once it exists. |
 | `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1, "fit": 100}`. `fit` is optional and defaults to 100. It is a whole number from 40 to 125: how large the page sits on the A4 sheet. 100 fits the whole page on that sheet. Above that, anything past the sheet is cut off. |
+| `POST /admin/citizenship` | Body `{"ids": ["…", "…"]}`, two different single-page files, first then second. Answers with the new one-page file. |
 | `POST /admin/jobs/{id}/retry` | Prepare again after a conversion failure. |
 | `POST /admin/jobs/{id}/trash` | Move it to Trash. The file stays. A print that already started is cancelled. |
 | `POST /admin/jobs/{id}/restore` | Bring it back from Trash. |
@@ -66,6 +67,10 @@ On the counter, pages are one choice: all, even pages only, odd pages only, or a
 Printing a `done` job sends it again. That is the reprint. The printer being off refuses the print and leaves the file ready. A second click while it is already `printing` is refused.
 
 `done` / "Sent to the printer." means CUPS took the job and finished sending it. It does not prove a sheet landed in the tray. If the result looks wrong, print it again. If it sits with the printer for 20 minutes, printO cancels it and keeps the file.
+
+## Citizenship
+
+Citizenship sits at the top right of the counter. It puts two single pages on one sheet: the first one chosen near the top, the second just under it. Done stays quiet until both are chosen. Cancel steps back. The new file is named Citizenship_1.pdf, then Citizenship_2.pdf, and it opens on its own so it can be printed like any other file.
 
 ## Changing the counter
 

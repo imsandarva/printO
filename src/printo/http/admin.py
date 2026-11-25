@@ -20,6 +20,10 @@ class PrintBody(BaseModel):
     fit: int = 100
 
 
+class PairBody(BaseModel):
+    ids: list[str]
+
+
 @router.get("/health")
 def health() -> object:
     return succeed({"message": running()})
@@ -50,6 +54,12 @@ def download(request: Request, job_id: str) -> FileResponse:
     if not job.page_count or not path.is_file():
         raise UserError(not_found(), 404)
     return FileResponse(path, media_type="application/pdf", filename=_download_name(job.original_name))
+
+
+@router.post("/citizenship")
+def citizenship(request: Request, body: PairBody) -> object:
+    job = request.app.state.ctx.citizenship.pair(body.ids)
+    return succeed({"job": present(job)})
 
 
 @router.post("/jobs/{job_id}/print")
