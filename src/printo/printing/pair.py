@@ -13,9 +13,10 @@ from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf.generic import RectangleObject
 
 from printo.convert.images import load_rgb, rgb_image
+from printo.domain.rotate import rotate_box
 from printo.errors import UserError
 from printo.messages import citizenship_failed, citizenship_pages, damaged, pdf_locked
-from printo.printing.compose import A4_HEIGHT, A4_WIDTH, clip_sheet
+from printo.printing.compose import A4_HEIGHT, A4_WIDTH, center_on_a4, clip_sheet, upright_page
 from printo.storage.atomic import replace
 
 # 150 dpi matches every other photo in the shop, and stays light on this laptop.
@@ -33,12 +34,32 @@ class Piece:
     image: bool
 
 
-def compose_pair(top: Piece, bottom: Piece, dest: Path) -> None:
+def compose_pair(
+    top: Piece,
+    bottom: Piece,
+    dest: Path,
+    *,
+    pieces_dir: Path | None = None,
+    rotations: tuple[int, int] = (0, 0),
+    sheet_rotation: int = 0,
+) -> list[dict[str, float]]:
     canvas = _Canvas()
     try:
-        canvas.place(top, bottom, dest)
+        return canvas.place(top, bottom, dest, pieces_dir=pieces_dir, rotations=rotations, sheet_rotation=sheet_rotation)
     finally:
         canvas.close()
+
+
+def recompose_pair(
+    pieces_dir: Path,
+    dest: Path,
+    rotations: tuple[int, int] = (0, 0),
+    sheet_rotation: int = 0,
+) -> list[dict[str, float]]:
+    """Rebuild a Citizenship sheet from its saved piece PDFs with updated piece/sheet rotations."""
+    top = Piece(pieces_dir / "piece-0.pdf", image=False)
+    bottom = Piece(pieces_dir / "piece-1.pdf", image=False)
+    return compose_pair(top, bottom, dest, rotations=rotations, sheet_rotation=sheet_rotation)
 
 
 class _Canvas:
@@ -47,16 +68,38 @@ class _Canvas:
         self._buffers: list[io.BytesIO] = []
         self._writer: PdfWriter | None = None
 
-    def place(self, top: Piece, bottom: Piece, dest: Path) -> None:
+    def place(
+        self,
+        top: Piece,
+        bottom: Piece,
+        dest: Path,
+        *,
+        pieces_dir: Path | None = None,
+        rotations: tuple[int, int] = (0, 0),
+        sheet_rotation: int = 0,
+    ) -> list[dict[str, float]]:
         self._writer = PdfWriter()
-        sheet = self._writer.add_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
         first, second = self._page(top), self._page(bottom)
-        above, below = _frames(_size(first), _size(second))
-        _stamp(sheet, first, above)
-        _stamp(sheet, second, below)
+        if pieces_dir is not None:
+            _save_piece(first, pieces_dir / "piece-0.pdf")
+            _save_piece(second, pieces_dir / "piece-1.pdf")
+        first_rot = upright_page(first, self._writer, rotations[0])
+        second_rot = upright_page(second, self._writer, rotations[1])
+        first_size, second_size = _size(first_rot), _size(second_rot)
+        above, below = _frames(first_size, second_size)
+        sheet = self._writer.add_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
+        _stamp(sheet, first_rot, above)
+        _stamp(sheet, second_rot, below)
         _keep_a4(sheet)
         clip_sheet(sheet)
-        _save(self._writer, dest)
+        writer = self._writer
+        if sheet_rotation % 360:
+            writer = PdfWriter()
+            turned = upright_page(sheet, writer, sheet_rotation)
+            center_on_a4(writer, turned, 1.0)
+        _save(writer, dest)
+        raw_boxes = [_norm_box(above, first_size), _norm_box(below, second_size)]
+        return [rotate_box(box, sheet_rotation, A4_WIDTH / A4_HEIGHT) for box in raw_boxes]
 
     def close(self) -> None:
         for reader in self._readers:
@@ -171,6 +214,17 @@ def _fit(size: tuple[float, float], max_w: float, max_h: float) -> tuple[tuple[f
     return (size[0] * scale, size[1] * scale), scale
 
 
+def _norm_box(frame: tuple[float, float, float], size: tuple[float, float]) -> dict[str, float]:
+    x, y, scale = frame
+    w_pt, h_pt = size[0] * scale, size[1] * scale
+    return {
+        "x": round(x / A4_WIDTH, 6),
+        "y": round((A4_HEIGHT - (y + h_pt)) / A4_HEIGHT, 6),
+        "w": round(w_pt / A4_WIDTH, 6),
+        "h": round(h_pt / A4_HEIGHT, 6),
+    }
+
+
 def _stamp(sheet, page, frame: tuple[float, float, float]) -> None:
     x, y, scale = frame
     box = page.mediabox
@@ -182,6 +236,12 @@ def _stamp(sheet, page, frame: tuple[float, float, float]) -> None:
 def _keep_a4(page) -> None:
     page.mediabox = RectangleObject((0, 0, A4_WIDTH, A4_HEIGHT))
     page.cropbox = RectangleObject((0, 0, A4_WIDTH, A4_HEIGHT))
+
+
+def _save_piece(page, dest: Path) -> None:
+    writer = PdfWriter()
+    writer.add_page(page)
+    _save(writer, dest)
 
 
 def _save(writer: PdfWriter, dest: Path) -> None:

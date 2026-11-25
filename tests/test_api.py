@@ -3,6 +3,7 @@ from io import BytesIO
 
 import pytest
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DecodedStreamObject, NameObject
 
 from printo.printing.compose import A4_HEIGHT, A4_WIDTH
 from tests.support import FakeCups, jpeg_bytes, marked_pdf, pdf_bytes, running
@@ -186,3 +187,34 @@ def test_bad_page_range_leaves_the_file(tmp_path):
         assert refused.status_code == 400 and "2 pages" in refused.json()["message"]
         assert cups.submitted == []
         assert client.get(f"/admin/jobs/{job['id']}").json()["job"]["status"] == "ready"
+
+
+def test_single_image_rotation_and_pdf_page_rotations(tmp_path):
+    with running(tmp_path) as (client, ctx, _cups):
+        assert _upload(client, "sideways.jpg", jpeg_bytes("teal")).status_code == 201
+        img_job = _wait(client, "sideways.jpg", {"ready"})
+        rotated = client.post(f"/admin/jobs/{img_job['id']}/rotate", json={"target": "image", "angle": 90})
+        assert rotated.status_code == 200 and rotated.json()["angle"] == 90
+        assert client.get(f"/admin/jobs/{img_job['id']}/pair").json()["angle"] == 90
+        img_pdf = PdfReader(str(ctx.files.document(img_job["id"]))).pages[0]
+        assert float(img_pdf.mediabox.width) == pytest.approx(A4_WIDTH, abs=2)
+        assert float(img_pdf.mediabox.height) == pytest.approx(A4_HEIGHT, abs=2)
+
+        writer = PdfWriter()
+        for width in (200, 300):
+            page = writer.add_blank_page(width=width, height=800)
+            stream = DecodedStreamObject()
+            stream.set_data(b"0 0 m 10 10 l S")
+            page[NameObject("/Contents")] = writer._add_object(stream)
+        buf = BytesIO()
+        writer.write(buf)
+        assert _upload(client, "doc.pdf", buf.getvalue()).status_code == 201
+        pdf_job = _wait(client, "doc.pdf", {"ready"})
+        bad = client.post(f"/admin/jobs/{pdf_job['id']}/print", json={"pages": "all", "rotations": {"9": 90}})
+        assert bad.status_code == 400
+        ok = client.post(f"/admin/jobs/{pdf_job['id']}/print", json={"pages": "all", "rotations": {"2": 90}})
+        assert ok.status_code == 200
+        _wait(client, "doc.pdf", {"done"})
+        printed_pages = PdfReader(str(ctx.files.to_print(pdf_job["id"]))).pages
+        assert len(printed_pages) == 2
+        assert b"-1 1 " in printed_pages[1].get_contents().get_data()

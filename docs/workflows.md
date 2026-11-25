@@ -52,7 +52,9 @@ The counter screen puts the file list on the left, the print controls beside it,
 | `GET /admin/jobs` | Newest first. Optional `?status=ready`. |
 | `GET /admin/jobs/{id}` | One job. |
 | `GET /admin/jobs/{id}/file` | The prepared PDF, once it exists. |
-| `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1, "fit": 100}`. `fit` is optional and defaults to 100. It is a whole number from 40 to 125: how large the page sits on the A4 sheet. 100 fits the whole page on that sheet. Above that, anything past the sheet is cut off. |
+| `GET /admin/jobs/{id}/pair` | Normalized Citizenship slot boxes and saved rotation state (`pair` and `angle`). |
+| `POST /admin/jobs/{id}/rotate` | Rotate a Citizenship front/back slot (`target: "pair"`), whole Citizenship sheet (`"sheet"`), or single photo (`"image"`) clockwise. |
+| `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1, "fit": 100, "rotations": {"2": 90}}`. `fit` (40–125) and `rotations` (1-based page to 0/90/180/270) are optional. |
 | `POST /admin/citizenship` | Body `{"ids": ["…", "…"]}`, two different single-page files, first then second. Answers with the new one-page file. |
 | `POST /admin/jobs/{id}/retry` | Prepare again after a conversion failure. |
 | `POST /admin/jobs/{id}/trash` | Move it to Trash. The file stays. A print that already started is cancelled. |

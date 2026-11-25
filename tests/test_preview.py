@@ -28,6 +28,8 @@ def test_counter_opens_with_sample_files():
         assert bar[0] == 200 and b"holdPages" in bar[2]
         sheets = _open(preview.url.replace("/admin/", "/admin/c/sheets.js"))
         assert sheets[0] == 200 and b"showSheets" in sheets[2] and b"iframe" not in sheets[2]
+        rotate_mod = _open(preview.url.replace("/admin/", "/admin/c/rotate.js"))
+        assert rotate_mod[0] == 200 and b"createRotateDock" in rotate_mod[2]
         viewer = _open(preview.url.replace("/admin/", "/c/pdf.min.mjs"))
         assert viewer[0] == 200 and b"getDocument" in viewer[2]
         assert _open(preview.url.replace("/admin/", "/c/pdf.worker.min.mjs"))[0] == 200
@@ -40,6 +42,10 @@ def test_counter_opens_with_sample_files():
         invitation = next(job for job in jobs["jobs"] if job["name"] == "Invitation.pdf")
         citizenship = _json(_open(f"{preview.url}citizenship", {"ids": [passport["id"], invitation["id"]]}))
         assert citizenship["job"]["name"] == "Citizenship_1.pdf" and citizenship["job"]["page_count"] == 1
+        pair_info = _json(_open(f"{preview.url}jobs/{citizenship['job']['id']}/pair"))
+        assert len(pair_info["pair"]["boxes"]) == 2
+        turned_pair = _json(_open(f"{preview.url}jobs/{citizenship['job']['id']}/rotate", {"target": "pair", "index": 0, "angle": 90}))
+        assert turned_pair["ok"] is True and turned_pair["pair"]["rotations"] == [90, 0]
         ready = next(job for job in jobs["jobs"] if job["name"] == "School admission form.pdf")
         assert ready["can_print"] is True and ready["page_count"] == 4
         bad = _json(_open(f"{preview.url}jobs/{ready['id']}/print", {"pages": "99", "copies": 1}))

@@ -70,6 +70,23 @@ def test_a_turned_page_stands_up_on_a4(tmp_path):
     assert b"0 0 m" in page.get_contents().get_data()
 
 
+def test_per_page_rotation_only_turns_chosen_pages(tmp_path):
+    source = tmp_path / "document.pdf"
+    source.write_bytes(_labeled((200, 400)))
+    dest = tmp_path / "to-print.pdf"
+    assert compose(source, dest, [0, 1], 1, 100, rotations={1: 90}) == 2
+    pages = PdfReader(str(dest)).pages
+    assert len(pages) == 2
+    assert float(pages[0].mediabox.width) == pytest.approx(A4_WIDTH)
+    assert float(pages[1].mediabox.width) == pytest.approx(A4_WIDTH)
+    # Page 0 stays upright (200x800 -> scale A4_HEIGHT/800), page 1 turns sideways (800x400 -> scale A4_WIDTH/800).
+    p0 = _placement(pages[0].get_contents().get_data())
+    p1 = _placement(pages[1].get_contents().get_data())
+    assert p0[0] == pytest.approx(A4_HEIGHT / 800)
+    assert p1[0] == pytest.approx(A4_WIDTH / 800)
+    assert b"-1 1 " in pages[1].get_contents().get_data()
+
+
 def _labeled(widths: tuple[int, ...]) -> bytes:
     writer = PdfWriter()
     for index, width in enumerate(widths):

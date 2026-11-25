@@ -47,6 +47,15 @@ class Files:
     def document(self, job_id: str) -> Path:
         return self.job_dir(job_id) / "document.pdf"
 
+    def pair_meta(self, job_id: str) -> Path:
+        return self.job_dir(job_id) / "pair.json"
+
+    def pair_piece(self, job_id: str, index: int) -> Path:
+        return self.job_dir(job_id) / f"piece-{index}.pdf"
+
+    def image_meta(self, job_id: str) -> Path:
+        return self.job_dir(job_id) / "rotation.json"
+
     def to_print(self, job_id: str) -> Path:
         return self.job_dir(job_id) / "to-print.pdf"
 

@@ -18,6 +18,8 @@ from printo.preview.files import asset, asset_headers, counter_page, page_header
 
 _ITEM = re.compile(r"^/admin/jobs/([0-9a-f]{32})$")
 _FILE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/file$")
+_PAIR = re.compile(r"^/admin/jobs/([0-9a-f]{32})/pair$")
+_ROTATE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/rotate$")
 _PRINT = re.compile(r"^/admin/jobs/([0-9a-f]{32})/print$")
 _RETRY = re.compile(r"^/admin/jobs/([0-9a-f]{32})/retry$")
 _TRASH = re.compile(r"^/admin/jobs/([0-9a-f]{32})/trash$")
@@ -72,6 +74,12 @@ def route(handler: Handler, method: str, path: str) -> None:
     if (found := _FILE.fullmatch(path)) and method == "GET":
         send_bytes(handler, 200, "application/pdf", handler.server.desk.file(found.group(1)), _JSON)
         return
+    if (found := _PAIR.fullmatch(path)) and method == "GET":
+        send_json(handler, {"ok": True, **handler.server.desk.pair_meta(found.group(1))})
+        return
+    if (found := _ROTATE.fullmatch(path)) and method == "POST":
+        send_json(handler, {"ok": True, **handler.server.desk.rotate(found.group(1), read_json(handler))})
+        return
     if path == _CITIZENSHIP and method == "POST":
         send_citizenship(handler)
         return
@@ -118,7 +126,7 @@ def send_jobs(handler: Handler) -> None:
 def send_print(handler: Handler, job_id: str) -> None:
     body = read_json(handler)
     pages, copies = body.get("pages", "all"), body.get("copies", 1)
-    send_json(handler, {"ok": True, "job": handler.server.desk.print_job(job_id, pages, copies, body.get("fit", 100))})
+    send_json(handler, {"ok": True, "job": handler.server.desk.print_job(job_id, pages, copies, body.get("fit", 100), body.get("rotations"))})
 
 
 def send_citizenship(handler: Handler) -> None:
@@ -248,7 +256,8 @@ def path_of(handler: Handler) -> str:
 
 def found_any(path: str) -> bool:
     return bool(
-        path == _CITIZENSHIP or _ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PRINT.fullmatch(path) or _RETRY.fullmatch(path)
+        path == _CITIZENSHIP or _ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PAIR.fullmatch(path)
+        or _ROTATE.fullmatch(path) or _PRINT.fullmatch(path) or _RETRY.fullmatch(path)
         or _TRASH.fullmatch(path) or _RESTORE.fullmatch(path)
     )
 

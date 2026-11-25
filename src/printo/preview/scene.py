@@ -11,14 +11,15 @@ from printo.domain.fit import parse_fit
 from printo.domain.job import Job
 from printo.domain.kinds import IMAGE, OFFICE, PDF
 from printo.domain.pages import selection
+from printo.domain.rotate import parse_angle, parse_rotations
 from printo.domain.status import CONVERTING, DONE, FAILED, PRINTING, READY, RECEIVED, STAGE_CONVERT, STAGE_PRINT, can_print, can_retry
 from printo.errors import UserError
 from printo.messages import (
     already_printing, arrived, convert_failed, in_trash, no_retry, not_found, not_ready, office_failed, preparing, present,
     citizenship_choose, citizenship_pages, citizenship_same, citizenship_wait, printing, ready, rejected, removed,
-    removed_but_printer, removed_event, sent, still_kept, trashed, trashed_but_printer,
+    removed_but_printer, removed_event, sent, still_kept, trashed, trashed_but_printer, validation,
 )
-from printo.preview.paper import sheet
+from printo.preview.paper import pair_sheet, sheet
 
 _PAIR_NAME = re.compile(r"^Citizenship_(\d+)\.pdf$")
 
@@ -33,6 +34,9 @@ class Scene:
         self._lock = threading.Lock()
         self._jobs = _samples()
         self._timers: dict[str, threading.Timer] = {}
+        self._pairs: dict[str, dict] = {}
+        self._image_angles: dict[str, int] = {}
+        self._files: dict[str, bytes] = {}
 
     def close(self) -> None:
         with self._lock:
@@ -52,12 +56,57 @@ class Scene:
 
     def file(self, job_id: str) -> bytes:
         with self._lock:
-            count = self._get(job_id).page_count or 0
+            job = self._get(job_id)
+            count = job.page_count or 0
+            custom = self._files.get(job_id)
         if count < 1:
             raise UserError(not_found(), 404)
-        return sheet(count)
+        return custom if custom is not None else sheet(count)
 
-    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100) -> dict:
+    def pair_meta(self, job_id: str) -> dict:
+        with self._lock:
+            self._get(job_id)
+            return {"pair": self._pairs.get(job_id), "angle": self._image_angles.get(job_id, 0)}
+
+    def rotate(self, job_id: str, payload: dict) -> dict:
+        target = payload.get("target")
+        with self._lock:
+            job = self._get(job_id)
+            if job.trashed_at:
+                raise UserError(in_trash(), 409)
+            if job.status == PRINTING:
+                raise UserError(already_printing(), 409)
+            if not can_print(job):
+                raise UserError(not_ready(), 409)
+            if target in {"pair", "sheet"}:
+                meta = self._pairs.get(job_id)
+                if meta is None:
+                    raise UserError(validation())
+                rotations = list(meta["rotations"])
+                cur_sheet = int(meta["sheet"])
+                if target == "pair":
+                    index = payload.get("index")
+                    if isinstance(index, bool) or index not in (0, 1):
+                        raise UserError(validation())
+                    raw = payload.get("angle")
+                    rotations[index] = (rotations[index] + 90) % 360 if raw is None else parse_angle(raw)
+                else:
+                    raw = payload.get("angle")
+                    cur_sheet = (cur_sheet + 90) % 360 if raw is None else parse_angle(raw)
+                pdf_bytes, boxes = pair_sheet(rotations=(rotations[0], rotations[1]), sheet_rotation=cur_sheet)
+                updated = {"rotations": rotations, "sheet": cur_sheet, "boxes": boxes}
+                self._pairs[job_id] = updated
+                self._files[job_id] = pdf_bytes
+                return {"job": present(job), "pair": updated}
+            if target == "image" and job.kind == IMAGE and job.page_count == 1:
+                raw = payload.get("angle")
+                angle = (self._image_angles.get(job_id, 0) + 90) % 360 if raw is None else parse_angle(raw)
+                self._image_angles[job_id] = angle
+                self._files[job_id] = sheet(1, rotate=angle)
+                return {"job": present(job), "angle": angle}
+        raise UserError(validation())
+
+    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None) -> dict:
         parse_fit(fit)
         with self._lock:
             job = self._get(job_id)
@@ -67,6 +116,7 @@ class Scene:
                 raise UserError(already_printing(), 409)
             if not can_print(job):
                 raise UserError(not_ready(), 409)
+            parse_rotations(rotations, job.page_count or 0)
             selection(pages or "all", job.page_count or 0, copies, self._copies, self._sheets)
             spec = (pages or "all").strip() or "all"
             updated = _with(job, status=PRINTING, failure_stage=None, pages_spec=spec, copies=copies, message=printing())
@@ -90,8 +140,12 @@ class Scene:
                 if job.page_count != 1:
                     raise UserError(citizenship_pages())
             moment = stamp(datetime.now(timezone.utc))
+            new_id = uuid.uuid4().hex
+            pdf_bytes, boxes = pair_sheet()
+            self._pairs[new_id] = {"rotations": [0, 0], "sheet": 0, "boxes": boxes}
+            self._files[new_id] = pdf_bytes
             created = Job(
-                id=uuid.uuid4().hex, original_name=self._next_pair_name(), kind=PDF, source_ext=".pdf", status=READY,
+                id=new_id, original_name=self._next_pair_name(), kind=PDF, source_ext=".pdf", status=READY,
                 failure_stage=None, message=ready(), byte_size=48_000, page_count=1, pages_spec="all", copies=1,
                 cups_job_id=None, created_at=moment, updated_at=moment, delete_after=None, trashed_at=None,
             )

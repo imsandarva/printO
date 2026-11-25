@@ -21,16 +21,17 @@ A4_HEIGHT = 297 * _MM
 _SLOP = 2.0
 
 
-def compose(source: Path, dest: Path, indexes: list[int], copies: int, fit: int = 100) -> int:
+def compose(source: Path, dest: Path, indexes: list[int], copies: int, fit: int = 100, rotations: dict[int, int] | None = None) -> int:
     reader = PdfReader(str(source), strict=False)
     if reader.is_encrypted:
         reader.decrypt("")
     writer = PdfWriter()
-    # 100% on a page that is already A4 is copied through, so embedded fonts stay as they are.
-    if fit == 100 and all(_is_a4(reader.pages[index]) for index in indexes):
+    extra = rotations or {}
+    # 100% on an upright page that is already A4 is copied through, so embedded fonts stay as they are.
+    if fit == 100 and all(extra.get(index, 0) % 360 == 0 and _is_a4(reader.pages[index]) for index in indexes):
         _copy(writer, reader, indexes, copies)
     else:
-        _place(writer, reader, indexes, copies, fit / 100)
+        _place(writer, reader, indexes, copies, fit / 100, extra)
     _save(writer, dest)
     return len(indexes) * copies
 
@@ -40,11 +41,11 @@ def _copy(writer: PdfWriter, reader: PdfReader, indexes: list[int], copies: int)
         writer.append(reader, pages=list(indexes))
 
 
-def _place(writer: PdfWriter, reader: PdfReader, indexes: list[int], copies: int, factor: float) -> None:
-    ready = {index: _upright(reader.pages[index], writer) for index in indexes}
+def _place(writer: PdfWriter, reader: PdfReader, indexes: list[int], copies: int, factor: float, rotations: dict[int, int]) -> None:
+    ready = {index: upright_page(reader.pages[index], writer, rotations.get(index, 0)) for index in indexes}
     for _ in range(copies):
         for index in indexes:
-            _center(writer, ready[index], factor)
+            center_on_a4(writer, ready[index], factor)
 
 
 def _is_a4(page) -> bool:
@@ -57,16 +58,19 @@ def _is_a4(page) -> bool:
     return abs(float(box.width) - A4_WIDTH) <= _SLOP and abs(float(box.height) - A4_HEIGHT) <= _SLOP
 
 
-def _upright(page, writer: PdfWriter):
-    # A rotated page is stored sideways. Stand it up so it sits on the portrait sheet as it looks.
-    if int(page.rotation or 0) % 360 == 0:
+def upright_page(page, writer: PdfWriter, extra: int = 0):
+    # A rotated page is stored sideways. Apply any extra turn and bake rotation into content.
+    total = (int(page.rotation or 0) + extra) % 360
+    if total == 0:
         return page
     clone = page.clone(writer)
+    if extra % 360:
+        clone.rotation = total
     clone.transfer_rotation_to_content()
     return clone
 
 
-def _center(writer: PdfWriter, page, factor: float) -> None:
+def center_on_a4(writer: PdfWriter, page, factor: float) -> None:
     box = page.mediabox
     left, bottom = float(box.left), float(box.bottom)
     width, height = max(float(box.width), 1.0), max(float(box.height), 1.0)

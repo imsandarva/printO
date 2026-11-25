@@ -13,6 +13,7 @@ from printo.services.events import Events
 from printo.services.ingest import Ingest
 from printo.services.limits import Limits
 from printo.services.printing import PrintService
+from printo.services.rotate import RotationService
 from printo.services.trash import Trash
 from printo.storage.database import Database
 from printo.storage.files import Files
@@ -35,6 +36,7 @@ class Context:
     trash: Trash
     ingest: Ingest
     citizenship: Citizenship
+    rotation: RotationService
     limits: Limits
 
 
@@ -57,4 +59,5 @@ def build_context(settings: Settings, cups: PrinterPort | None = None, clock: Cl
         trash=Trash(jobs, files, printer, events, converter),
         ingest=Ingest(settings, jobs, files, limits, converter, events),
         citizenship=Citizenship(jobs, files, events),
+        rotation=RotationService(jobs, files),
     )

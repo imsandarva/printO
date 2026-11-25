@@ -1,6 +1,8 @@
 import time
+from io import BytesIO
 
 import pytest
+from PIL import Image
 from pypdf import PdfReader
 
 from printo.printing.compose import A4_HEIGHT, A4_WIDTH
@@ -108,3 +110,47 @@ def test_trashed_name_is_not_reused(tmp_path):
         assert client.post(f"/admin/jobs/{first['id']}/trash").status_code == 200
         second = _pair(client, front["id"], back["id"]).json()["job"]
         assert second["name"] == "Citizenship_2.pdf"
+
+
+def _wide_jpeg(color: str, size: tuple[int, int] = (400, 200)) -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", size, color).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def test_citizenship_rotates_front_back_and_sheet_independently(tmp_path):
+    with running(tmp_path) as (client, ctx, _cups):
+        assert _upload(client, "front.jpg", _wide_jpeg("red")).status_code == 201
+        assert _upload(client, "back.jpg", _wide_jpeg("navy")).status_code == 201
+        front = _wait(client, "front.jpg", {"ready"})
+        back = _wait(client, "back.jpg", {"ready"})
+        job = _pair(client, front["id"], back["id"]).json()["job"]
+
+        meta = client.get(f"/admin/jobs/{job['id']}/pair")
+        assert meta.status_code == 200
+        pair = meta.json()["pair"]
+        assert pair["rotations"] == [0, 0] and pair["sheet"] == 0 and len(pair["boxes"]) == 2
+        box0_initial, box1_initial = pair["boxes"]
+        assert box0_initial["w"] > box0_initial["h"]
+        assert box1_initial["w"] > box1_initial["h"]
+
+        # Rotate only front photo (index 0) 90 deg CW: front becomes tall, back stays unchanged.
+        rot_front = client.post(f"/admin/jobs/{job['id']}/rotate", json={"target": "pair", "index": 0, "angle": 90})
+        assert rot_front.status_code == 200
+        pair_front = rot_front.json()["pair"]
+        assert pair_front["rotations"] == [90, 0]
+        assert pair_front["boxes"][0]["h"] > pair_front["boxes"][0]["w"]
+        assert pair_front["boxes"][1]["w"] == pytest.approx(box1_initial["w"], abs=1e-4)
+        assert pair_front["boxes"][1]["h"] == pytest.approx(box1_initial["h"], abs=1e-4)
+
+        # Rotate whole sheet 90 deg CW.
+        rot_sheet = client.post(f"/admin/jobs/{job['id']}/rotate", json={"target": "sheet", "angle": 90})
+        assert rot_sheet.status_code == 200
+        assert rot_sheet.json()["pair"]["sheet"] == 90
+        page = PdfReader(str(ctx.files.document(job["id"]))).pages[0]
+        assert float(page.mediabox.width) == pytest.approx(A4_WIDTH)
+        assert float(page.mediabox.height) == pytest.approx(A4_HEIGHT)
+
+        # Bad target / angle / index is refused.
+        assert client.post(f"/admin/jobs/{job['id']}/rotate", json={"target": "pair", "index": 2, "angle": 90}).status_code == 400
+        assert client.post(f"/admin/jobs/{job['id']}/rotate", json={"target": "pair", "index": 0, "angle": 45}).status_code == 400

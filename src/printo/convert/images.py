@@ -8,6 +8,7 @@ from pillow_heif import register_heif_opener
 from printo.convert.pdf_doc import Prepared, page_count
 from printo.errors import UserError
 from printo.messages import damaged, too_many_pages
+from printo.storage.atomic import replace
 
 # Registered once so HEIC photos from phones open through the normal image reader.
 register_heif_opener()
@@ -18,6 +19,11 @@ _A4_MM = (210, 297)
 _MARGIN_MM = 10
 # A scan can be many sheets. A photo cannot: later frames are an HDR gain map, depth, or thumbnail.
 _STACKED = "TIFF"
+_CW_ROTATE = {
+    90: Image.Transpose.ROTATE_270,
+    180: Image.Transpose.ROTATE_180,
+    270: Image.Transpose.ROTATE_90,
+}
 
 
 def load_rgb(source: Path) -> Image.Image:
@@ -37,9 +43,28 @@ def prepare_image(source: Path, dest: Path, max_sheets: int) -> Prepared:
     frames = _frames(source, max_sheets)
     dest.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(dest, "PDF", resolution=_DPI, save_all=True, append_images=frames[1:])
-    for frame in frames:
-        frame.close()
+    _close(frames)
     return Prepared(page_count(dest, max_sheets))
+
+
+def rotate_image(source: Path, dest: Path, angle: int) -> None:
+    """Re-render a single photo rotated clockwise by 0/90/180/270 onto a fresh A4 PDF."""
+    rgb = load_rgb(source)
+    try:
+        turned = _turn_cw(rgb, angle)
+    finally:
+        rgb.close()
+    page = _place_on_a4(turned)
+    temporary = dest.with_name(dest.name + ".partial")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        page.save(temporary, "PDF", resolution=_DPI)
+        replace(temporary, dest)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    finally:
+        page.close()
 
 
 def _sheet_count(image: Image.Image) -> int:
@@ -70,14 +95,24 @@ def _frames(source: Path, max_sheets: int) -> list[Image.Image]:
 
 
 def _on_a4(image: Image.Image) -> Image.Image:
-    rgb = _rgb(ImageOps.exif_transpose(image) or image)
+    return _place_on_a4(_rgb(ImageOps.exif_transpose(image) or image))
+
+
+def _place_on_a4(rgb: Image.Image) -> Image.Image:
     page = _page()
     margin = _px(_MARGIN_MM)
     width, height = page.size[0] - 2 * margin, page.size[1] - 2 * margin
-    rgb.thumbnail((width, height), Image.Resampling.LANCZOS)
-    page.paste(rgb, ((page.size[0] - rgb.size[0]) // 2, (page.size[1] - rgb.size[1]) // 2))
-    rgb.close()
+    try:
+        rgb.thumbnail((width, height), Image.Resampling.LANCZOS)
+        page.paste(rgb, ((page.size[0] - rgb.size[0]) // 2, (page.size[1] - rgb.size[1]) // 2))
+    finally:
+        rgb.close()
     return page
+
+
+def _turn_cw(image: Image.Image, angle: int) -> Image.Image:
+    op = _CW_ROTATE.get(angle % 360)
+    return image.transpose(op) if op is not None else image.copy()
 
 
 def _rgb(image: Image.Image) -> Image.Image:

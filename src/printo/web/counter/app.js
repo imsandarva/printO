@@ -8,7 +8,7 @@ import { clampFit } from "./fit.js";
 import { trashIcon } from "./icons.js";
 import { clampPage, pageNumbers, paintPages, readPages, writePages } from "./pages.js";
 import { paintQueue, setOpen, writeBorn } from "./queue.js";
-import { closeSheets, focusSheets, showSheets } from "./sheets.js";
+import { closeSheets, focusSheets, pulseRotateButton, replaceSheetsDocument, rotateSheetsInPlace, showSheets, updateSheetsState } from "./sheets.js";
 import { paintAsk, paintBin } from "./trash.js";
 
 const COPY_LIMIT = 20;
@@ -43,6 +43,7 @@ const state = {
 
 function boot() {
   document.addEventListener("pointerdown", warmSound, { passive: true });
+  document.addEventListener("click", onDeskClick);
   document.addEventListener("keydown", onKey);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   window.setInterval(renderQueue, 30000);
@@ -223,7 +224,11 @@ function sameDraft(draft, job, count) {
 
 function freshDraft(job, count) {
   const read = readPages(job.pages, count);
-  const draft = { choice: read.choice, from: read.from, to: read.to, count, copies: job.copies || 1, fit: 100, dirty: false, focus: "" };
+  const draft = {
+    choice: read.choice, from: read.from, to: read.to, count, copies: job.copies || 1, fit: 100,
+    rotations: {}, imageAngle: 0, pair: null, selectedPage: null, selectedSlot: null,
+    rotating: false, pendingRotate: null, dirty: false, focus: "",
+  };
   draft.pages = writePages(draft);
   return draft;
 }
@@ -344,6 +349,11 @@ function renderPaper() {
 
 function resetPaper() {
   closeSheets();
+  const job = current();
+  if (job && state.drafts[job.id]) {
+    state.drafts[job.id].selectedPage = null;
+    state.drafts[job.id].selectedSlot = null;
+  }
   const slot = document.getElementById("paper");
   // Drop the marker. An empty one already means this file has no pages, so it cannot also mean the page should be drawn again.
   if (slot) delete slot.dataset.key;
@@ -351,28 +361,60 @@ function resetPaper() {
 
 async function showPreview(job) {
   const slot = document.getElementById("paper");
-  const copy = previewCopy(job);
+  const draft = draftOf(job);
   const cached = state.previews[job.id];
-  if (cached) { showSheets(slot, job.id, cached, copy); return; }
+  if (cached) {
+    if (cached.pair && !draft.pair) draft.pair = clonePair(cached.pair);
+    if (cached.angle != null) draft.imageAngle = cached.angle;
+    showSheets(slot, job.id, cached.bytes, previewCopy(job));
+    return;
+  }
   try {
-    const response = await fetch("/admin/jobs/" + job.id + "/file");
-    if (!response.ok || state.selected !== job.id) return;
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const needMeta = isPairName(job.name) || (job.kind === "image" && job.page_count === 1);
+    const [fileRes, metaRes] = await Promise.all([
+      fetch("/admin/jobs/" + job.id + "/file"),
+      needMeta ? fetch("/admin/jobs/" + job.id + "/pair").catch(() => null) : Promise.resolve(null),
+    ]);
+    if (!fileRes.ok || state.selected !== job.id) return;
+    const bytes = new Uint8Array(await fileRes.arrayBuffer());
+    let pair = null;
+    let angle = 0;
+    if (metaRes && metaRes.ok) {
+      const meta = await metaRes.json().catch(() => null);
+      if (meta && meta.ok) { pair = meta.pair || null; angle = Number(meta.angle || 0); }
+    }
     if (state.selected !== job.id) return;
+    draft.pair = pair ? clonePair(pair) : null;
+    draft.imageAngle = angle;
     for (const id of Object.keys(state.previews)) delete state.previews[id];
-    state.previews[job.id] = bytes;
-    showSheets(slot, job.id, bytes, copy);
+    state.previews[job.id] = { bytes, pair: draft.pair ? clonePair(draft.pair) : null, angle };
+    showSheets(slot, job.id, bytes, previewCopy(job));
   } catch {
-    if (slot && state.selected === job.id) slot.replaceChildren(el("p", { class: "quiet", text: copy.fail }));
+    if (slot && state.selected === job.id) slot.replaceChildren(el("p", { class: "quiet", text: previewCopy(job).fail }));
   }
 }
 
 function previewCopy(job) {
   const fail = "The pages aren't ready to look at yet.";
   const pages = previewPages(job);
-  if (state.view === "trash") return { caption: "", fail, pages };
+  if (state.view === "trash") return { caption: "", fail, pages, canRotate: false };
   const draft = draftOf(job);
-  return { caption: "This is how the page will look.", fail, fit: draft.fit, onFit: (fit) => rememberFit(job.id, fit), pages };
+  return {
+    caption: "This is how the page will look.",
+    fail,
+    fit: draft.fit,
+    onFit: (fit) => rememberFit(job.id, fit),
+    pages,
+    rotations: draft.rotations,
+    pair: draft.pair,
+    canRotate: canRotateJob(job),
+    selectedPage: draft.selectedPage,
+    selectedSlot: draft.selectedSlot,
+    onSelectPage: (pageNum) => togglePageSelection(job, pageNum),
+    onSelectSlot: (slotIndex) => toggleSlotSelection(job, slotIndex),
+    onClearSelection: () => clearPreviewSelection(job),
+    onRotate: () => handleRotate(job),
+  };
 }
 
 function previewPages(job) {
@@ -383,7 +425,133 @@ function previewPages(job) {
 
 function syncSheets(job) {
   if (!job || !job.page_count || state.view === "trash") return;
-  focusSheets(previewPages(job));
+  const pages = previewPages(job);
+  const draft = draftOf(job);
+  if (draft.selectedPage != null && !pages.includes(draft.selectedPage)) draft.selectedPage = null;
+  updateSheetsState({ canRotate: canRotateJob(job), selectedPage: draft.selectedPage, selectedSlot: draft.selectedSlot, pair: draft.pair });
+  focusSheets(pages);
+}
+
+function canRotateJob(job) {
+  return Boolean(job && state.view === "files" && !state.pairing && job.page_count && job.can_print && job.status !== "printing");
+}
+
+function togglePageSelection(job, pageNum) {
+  if (!canRotateJob(job)) return;
+  const draft = draftOf(job);
+  draft.selectedSlot = null;
+  draft.selectedPage = draft.selectedPage === pageNum ? null : pageNum;
+  updateSheetsState({ selectedPage: draft.selectedPage, selectedSlot: null });
+}
+
+function toggleSlotSelection(job, slotIndex) {
+  if (!canRotateJob(job)) return;
+  const draft = draftOf(job);
+  draft.selectedPage = null;
+  draft.selectedSlot = draft.selectedSlot === slotIndex ? null : slotIndex;
+  updateSheetsState({ selectedPage: null, selectedSlot: draft.selectedSlot });
+}
+
+function clearPreviewSelection(job) {
+  const target = job || current();
+  if (!target) return;
+  const draft = state.drafts[target.id];
+  if (!draft || (draft.selectedPage == null && draft.selectedSlot == null)) return;
+  draft.selectedPage = null;
+  draft.selectedSlot = null;
+  updateSheetsState({ selectedPage: null, selectedSlot: null });
+}
+
+function handleRotate(job) {
+  const target = job || current();
+  if (!canRotateJob(target)) return;
+  const draft = draftOf(target);
+  if (draft.pair && Array.isArray(draft.pair.boxes) && draft.pair.boxes.length === 2) {
+    if (draft.selectedSlot === 0 || draft.selectedSlot === 1) {
+      const index = draft.selectedSlot;
+      const next = ((draft.pair.rotations[index] || 0) + 90) % 360;
+      draft.pair.rotations[index] = next;
+      queueServerRotate(target, { target: "pair", index, angle: next });
+      return;
+    }
+    const next = ((draft.pair.sheet || 0) + 90) % 360;
+    draft.pair.sheet = next;
+    queueServerRotate(target, { target: "sheet", angle: next });
+    return;
+  }
+  if (target.kind === "image" && target.page_count === 1) {
+    const next = ((draft.imageAngle || 0) + 90) % 360;
+    draft.imageAngle = next;
+    queueServerRotate(target, { target: "image", angle: next });
+    return;
+  }
+  rotatePdfDraft(target, draft);
+}
+
+function rotatePdfDraft(job, draft) {
+  const count = job.page_count || 1;
+  const pages = draft.selectedPage != null ? [draft.selectedPage] : allPageList(count);
+  for (const page of pages) {
+    const next = ((draft.rotations[page] || 0) + 90) % 360;
+    if (next) draft.rotations[page] = next;
+    else delete draft.rotations[page];
+  }
+  rotateSheetsInPlace(draft.rotations, pages);
+}
+
+async function queueServerRotate(job, payload) {
+  const draft = draftOf(job);
+  draft.pendingRotate = payload;
+  if (draft.rotating) return;
+  draft.rotating = true;
+  try {
+    while (draft.pendingRotate) {
+      const next = draft.pendingRotate;
+      draft.pendingRotate = null;
+      const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/rotate", next);
+      if (!body || !body.ok) {
+        if (next.target === "image") { rotatePdfDraft(job, draft); return; }
+        state.note = (body && body.message) || "Please try that again in a moment.";
+        renderControls();
+        return;
+      }
+      if (body.pair) draft.pair = clonePair(body.pair);
+      if ("angle" in body) draft.imageAngle = Number(body.angle || 0);
+      const fileRes = await fetch("/admin/jobs/" + job.id + "/file?v=" + Date.now());
+      if (!fileRes.ok) continue;
+      const bytes = new Uint8Array(await fileRes.arrayBuffer());
+      if (state.previews[job.id] || state.selected === job.id) {
+        state.previews[job.id] = { bytes, pair: draft.pair ? clonePair(draft.pair) : null, angle: draft.imageAngle };
+      }
+      if (state.selected === job.id && !draft.pendingRotate) {
+        await replaceSheetsDocument(bytes, {
+          pair: draft.pair,
+          selectedPage: draft.selectedPage,
+          selectedSlot: draft.selectedSlot,
+          canRotate: canRotateJob(job),
+        });
+      }
+    }
+  } catch {
+    state.note = "Please try that again in a moment.";
+    renderControls();
+  } finally {
+    draft.rotating = false;
+  }
+}
+
+function allPageList(count) {
+  const pages = [];
+  for (let i = 1; i <= count; i += 1) pages.push(i);
+  return pages;
+}
+
+function clonePair(pair) {
+  return {
+    rotations: Array.isArray(pair.rotations) ? pair.rotations.slice() : [0, 0],
+    sheet: Number(pair.sheet || 0),
+    boxes: Array.isArray(pair.boxes) ? pair.boxes.map((b) => ({ ...b })) : [],
+  };
 }
 
 function rememberFit(id, fit) {
@@ -518,11 +686,13 @@ async function printCurrent() {
   if (!job || state.working || !job.can_print) return;
   const draft = draftOf(job);
   const pages = job.page_count > 1 ? writePages(draft) : "all";
+  const payload = { pages, copies: draft.copies, fit: clampFit(draft.fit) };
+  if (draft.rotations && Object.keys(draft.rotations).length) payload.rotations = draft.rotations;
   state.working = "print";
   state.note = "";
   render();
   try {
-    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/print", { pages, copies: draft.copies, fit: clampFit(draft.fit) });
+    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/print", payload);
     if (!body.ok) state.note = body.message || "Please try that again in a moment.";
     else { draft.dirty = false; onJob(body.job); loadPrinter(); return; }
   } catch {
@@ -728,11 +898,28 @@ function closeAsk() {
   render();
 }
 
+function onDeskClick(event) {
+  if (event.target.closest(".sheet-stage, .fit, .rotate-dock")) return;
+  clearPreviewSelection();
+}
+
 function onKey(event) {
-  if (event.key !== "Escape") return;
-  if (state.ask) { event.preventDefault(); closeAsk(); return; }
-  if (state.pairing) { event.preventDefault(); cancelPairing(); return; }
-  if (state.picking) { event.preventDefault(); stopPicking(); }
+  if (event.key === "Escape") {
+    if (state.ask) { event.preventDefault(); closeAsk(); return; }
+    if (state.pairing) { event.preventDefault(); cancelPairing(); return; }
+    if (state.picking) { event.preventDefault(); stopPicking(); return; }
+    clearPreviewSelection();
+    return;
+  }
+  if ((event.key === "r" || event.key === "R") && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    const tag = event.target && event.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    const job = current();
+    if (!canRotateJob(job) || state.ask || state.picking) return;
+    event.preventDefault();
+    pulseRotateButton();
+    handleRotate(job);
+  }
 }
 
 function renderPair() {

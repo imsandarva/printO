@@ -17,6 +17,19 @@ export function backIcon() {
   return svg('<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5 8l5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>');
 }
 
+export function rotateIcon() {
+  return svg(
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M20 4.5v5.2h-5.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M19.6 9.5A8.2 8.2 0 1 0 20 14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>' +
+    '</svg>',
+  );
+}
+
+export function clearIcon() {
+  return svg('<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>');
+}
+
 function svg(markup) {
   const wrap = document.createElement("template");
   wrap.innerHTML = markup;

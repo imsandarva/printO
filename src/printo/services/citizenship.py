@@ -1,5 +1,6 @@
 """Two single pages become one sheet the counter can preview and print like any other file."""
 
+import json
 import logging
 import uuid
 
@@ -10,7 +11,7 @@ from printo.errors import UserError
 from printo.messages import citizenship_choose, citizenship_failed, citizenship_pages, citizenship_same, citizenship_wait, in_trash, not_found
 from printo.printing.pair import Piece, compose_pair
 from printo.services.events import Events
-from printo.storage.atomic import copy_sealed
+from printo.storage.atomic import copy_sealed, replace
 from printo.storage.files import Files
 from printo.storage.jobs import JobStore
 
@@ -47,12 +48,14 @@ class Citizenship:
         job_id = uuid.uuid4().hex
         partial = self.files.new_partial()
         try:
-            compose_pair(top, bottom, partial)
+            job_dir = self.files.job_dir(job_id)
+            boxes = compose_pair(top, bottom, partial, pieces_dir=job_dir)
             size = partial.stat().st_size
             if size < 1:
                 raise UserError(citizenship_failed())
             self.files.adopt(partial, job_id, ".pdf")
             copy_sealed(self.files.source(job_id, ".pdf"), self.files.document(job_id))
+            _write_pair_meta(self.files.pair_meta(job_id), boxes)
             job = self.jobs.insert_ready(job_id, PDF, ".pdf", size, 1)
         except UserError:
             _discard(self.files, partial, job_id)
@@ -76,6 +79,13 @@ def _source(files: Files, job: Job) -> Piece:
     if job.kind == PDF and files.source_exists(job):
         return Piece(files.source(job.id, job.source_ext), image=False)
     raise UserError(not_found(), 404)
+
+
+def _write_pair_meta(path, boxes: list[dict[str, float]]) -> None:
+    payload = {"rotations": [0, 0], "sheet": 0, "boxes": boxes}
+    temporary = path.with_name(path.name + ".partial")
+    temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+    replace(temporary, path)
 
 
 def _discard(files: Files, partial, job_id: str) -> None:

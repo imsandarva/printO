@@ -1,5 +1,6 @@
 """The shop side. These routes exist only for the laptop at the counter."""
 
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -18,10 +19,17 @@ class PrintBody(BaseModel):
     pages: str = "all"
     copies: int = 1
     fit: int = 100
+    rotations: dict[str, int] | None = None
 
 
 class PairBody(BaseModel):
     ids: list[str]
+
+
+class RotateBody(BaseModel):
+    target: str
+    index: int | None = None
+    angle: int | None = None
 
 
 @router.get("/health")
@@ -62,9 +70,22 @@ def citizenship(request: Request, body: PairBody) -> object:
     return succeed({"job": present(job)})
 
 
+@router.get("/jobs/{job_id}/pair")
+def pair_meta(request: Request, job_id: str) -> object:
+    meta = request.app.state.ctx.rotation.meta(job_id)
+    return succeed(meta)
+
+
+@router.post("/jobs/{job_id}/rotate")
+async def rotate_job(request: Request, job_id: str, body: RotateBody) -> object:
+    payload = body.model_dump(exclude_none=True)
+    result = await asyncio.to_thread(request.app.state.ctx.rotation.rotate, job_id, payload)
+    return succeed(result)
+
+
 @router.post("/jobs/{job_id}/print")
 async def print_job(request: Request, job_id: str, body: PrintBody) -> object:
-    job = await request.app.state.ctx.printing.print_job(job_id, body.pages, body.copies, body.fit)
+    job = await request.app.state.ctx.printing.print_job(job_id, body.pages, body.copies, body.fit, body.rotations)
     return succeed({"job": present(job)})
 
 
