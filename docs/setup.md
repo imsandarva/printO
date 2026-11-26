@@ -2,6 +2,7 @@
 
 Needs Python 3.11 or newer, CUPS, and the MF3010 queue already working (`lpstat -p MF3010`). Word files also need LibreOffice (`soffice` on `PATH`). Photos from iPhones need the HEIC library, which this machine already has; `pillow-heif` is installed with the app.
 
+
 From this directory:
 
 ```bash
