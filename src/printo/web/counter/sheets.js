@@ -166,8 +166,8 @@ function place(view, slot) {
     onClear: () => view.onClearSelection?.(),
   });
   held.frame.insertBefore(stage, scroller);
-  stage.append(scroller, dock);
-  const preview = column(held.frame, view);
+  stage.append(scroller);
+  const preview = column(held.frame, dock, view);
   if (!current(view, slot)) { held.close(); return; }
   view.hold = held;
   view.root = preview;
@@ -187,9 +187,9 @@ function place(view, slot) {
   requestAnimationFrame(() => drawVisible(view, scroller, stack));
 }
 
-function column(frame, view) {
+function column(frame, dock, view) {
   const preview = el("div", { class: "preview" });
-  preview.append(frame);
+  preview.append(dock, frame);
   if (view.onFit) preview.append(sizeControl(view.fit, (exact, shown) => onSize(view, exact, shown)));
   if (view.caption) preview.append(el("p", { class: "caption", text: view.caption }));
   applyScale(preview, view.fit);

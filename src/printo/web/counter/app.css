@@ -533,7 +533,7 @@ body:has(#toast) .printer { bottom: 78px; }
 
 .empty h1 { font-size: 2rem; letter-spacing: -0.03em; font-weight: 600; margin-bottom: 8px; }
 
-#paper { margin: 18px 0 0; max-width: none; min-width: 0; }
+#paper { margin: 14px 0 0; max-width: none; min-width: 0; }
 
 /* The sheet, and a slim bar just beside it when there is more than one page. */
 .sheet-frame {
@@ -545,8 +545,8 @@ body:has(#toast) .printer { bottom: 78px; }
   display: flex;
   align-items: stretch;
   gap: var(--bar-gap);
-  width: min(100%, calc((100dvh - 230px) * var(--sheet)));
-  max-height: calc(100dvh - 230px);
+  width: min(100%, calc((100dvh - 274px) * var(--sheet)));
+  max-height: calc(100dvh - 274px);
 }
 
 /* The previous pages, held over the sheet just long enough to dissolve into the new ones. */
@@ -559,13 +559,13 @@ body:has(#toast) .printer { bottom: 78px; }
   filter: grayscale(1);
 }
 
-.sheet-frame.scrolling { width: min(100%, calc((100dvh - 230px) * var(--sheet) + var(--bar-gap) + var(--bar))); }
+.sheet-frame.scrolling { width: min(100%, calc((100dvh - 274px) * var(--sheet) + var(--bar-gap) + var(--bar))); }
 
 .sheet-stage {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
-  max-height: calc(100dvh - 230px);
+  max-height: calc(100dvh - 274px);
   aspect-ratio: var(--sheet);
 }
 
@@ -584,22 +584,20 @@ body:has(#toast) .printer { bottom: 78px; }
   box-shadow: none;
 }
 
+/* Outside and above the top-left edge of the preview paper, with breathing room. */
 .rotate-dock {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 6;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
-  pointer-events: none;
+  width: var(--paper, 100%);
+  margin-bottom: 10px;
 }
 
 .rotate-dock[hidden],
 .rotate-scope[hidden] { display: none; }
 
 .rotate-scope {
-  pointer-events: auto;
   appearance: none;
   display: inline-flex;
   align-items: center;
@@ -607,16 +605,14 @@ body:has(#toast) .printer { bottom: 78px; }
   height: 32px;
   padding: 0 10px 0 11px;
   border-radius: 999px;
-  border: 1px solid rgba(184, 90, 42, 0.28);
-  background: rgba(255, 252, 247, 0.9);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(184, 90, 42, 0.26);
+  background: rgba(255, 252, 247, 0.92);
   color: var(--accent-deep);
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: -0.015em;
   line-height: 1;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 6px 16px rgba(40, 28, 16, 0.09);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 4px 12px rgba(70, 48, 24, 0.06);
   transition: background 0.16s ease, border-color 0.16s ease, transform 0.14s ease;
   animation: scope-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -630,35 +626,32 @@ body:has(#toast) .printer { bottom: 78px; }
 .rotate-scope:active { transform: scale(0.96); }
 
 .rotate-btn {
-  pointer-events: auto;
   appearance: none;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   padding: 0;
-  border-radius: 14px;
-  border: 1px solid rgba(26, 23, 20, 0.11);
-  background: rgba(255, 252, 247, 0.88);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border-radius: 13px;
+  border: 1px solid rgba(26, 23, 20, 0.09);
+  background: rgba(255, 252, 247, 0.94);
   color: var(--ink);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.92) inset, 0 8px 20px rgba(40, 28, 16, 0.11), 0 1px 3px rgba(40, 28, 16, 0.06);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.94) inset, 0 6px 16px rgba(70, 48, 24, 0.07), 0 1px 2px rgba(70, 48, 24, 0.04);
   touch-action: manipulation;
   transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease;
 }
 
-.rotate-btn svg { width: 22px; height: 22px; flex: none; }
+.rotate-btn svg { width: 21px; height: 21px; flex: none; }
 
 .rotate-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(184, 90, 42, 0.34);
+  background: #fff;
+  border-color: rgba(184, 90, 42, 0.3);
   color: var(--accent-deep);
   transform: translateY(-1px);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 10px 24px rgba(70, 48, 24, 0.14), 0 2px 5px rgba(70, 48, 24, 0.07);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.96) inset, 0 8px 20px rgba(70, 48, 24, 0.1), 0 2px 4px rgba(70, 48, 24, 0.05);
 }
 
-.rotate-btn:active:not(:disabled) { transform: scale(0.93); }
+.rotate-btn:active:not(:disabled) { transform: scale(0.94); }
 
 .rotate-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
 
@@ -1295,7 +1288,7 @@ body:has(#toast) .printer { bottom: 78px; }
 }
 
 @keyframes scope-in {
-  from { opacity: 0; transform: translateX(6px) scale(0.95); }
+  from { opacity: 0; transform: translateX(-6px) scale(0.95); }
   to { opacity: 1; transform: none; }
 }
 

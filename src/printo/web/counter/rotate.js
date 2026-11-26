@@ -26,7 +26,7 @@ export function createRotateDock(hooks) {
     },
   });
   button.append(rotateIcon());
-  dock.append(scope, button);
+  dock.append(button, scope);
   return dock;
 }
 
