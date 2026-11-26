@@ -1,6 +1,5 @@
 # Workflows
 
-
 ## At the counter
 
 The customer joins the shop wifi. The name and password are in the window where the shop was started, and in `data/wifi` (created the first time the shop starts). They scan the code in that window, or type the address under it, usually `http://10.42.0.1:8088/`. The page opens in the phone's own browser.
