@@ -8,6 +8,7 @@ import { holdPages } from "./bar.js";
 import { el } from "./dom.js";
 import { clampFit, sizeControl } from "./fit.js";
 import { createRotateDock, flickIcon, paintPairSlots, syncRotateDock } from "./rotate.js";
+import { paintLandscapeSheet } from "./landscape.js";
 
 const WORKER = "/c/pdf.worker.min.mjs";
 const NEAR = 480;
@@ -40,6 +41,8 @@ export function showSheets(slot, id, bytes, copy) {
     onSelectSlot: copy.onSelectSlot || null,
     onClearSelection: copy.onClearSelection || null,
     onRotate: copy.onRotate || null,
+    landscape: Boolean(copy.landscape),
+    onLandscape: copy.onLandscape || null,
   };
   live = view;
   read(view, slot, bytes);
@@ -61,6 +64,22 @@ export function updateSheetsState(next) {
   if ("busyRotate" in next) live.busyRotate = Boolean(next.busyRotate);
   if ("selectedPage" in next) live.selectedPage = next.selectedPage;
   if ("selectedSlot" in next) live.selectedSlot = next.selectedSlot;
+  syncSelection(live);
+}
+
+/* Toggle landscape 2-up mode on the live view and redraw all sheets. */
+export function setLandscapeMode(on) {
+  if (!live || !live.open) return;
+  live.landscape = Boolean(on);
+  /* Switch the stage aspect-ratio to landscape (297/210 ≈ 1.4142) or back to portrait (210/297). */
+  applyLandscapeStage(live);
+  /* Clear pool so sheets are rebuilt with the right shape. */
+  if (live.pool) for (const sheet of live.pool.values()) forget(sheet);
+  live.mark += 1;
+  if (live.stack) {
+    mount(live, wanted(live));
+    if (live.scroller) drawVisible(live, live.scroller, live.stack);
+  }
   syncSelection(live);
 }
 
@@ -164,6 +183,7 @@ function place(view, slot) {
   const dock = createRotateDock({
     onRotate: () => view.onRotate?.(),
     onClear: () => view.onClearSelection?.(),
+    onLandscape: () => view.onLandscape?.(),
   });
   held.frame.insertBefore(stage, scroller);
   stage.append(scroller);
@@ -177,6 +197,7 @@ function place(view, slot) {
   view.scroller = scroller;
   view.stack = stack;
   slot.replaceChildren(preview);
+  applyLandscapeStage(view);
   matchPaper(view, scroller);
   if (!view.open) return;
   listen(view, scroller, stack);
@@ -216,9 +237,25 @@ function applyScale(node, fit) {
   node.classList.add("fitted");
 }
 
+/* Switch stage and sheet-frame aspect-ratio between landscape (2-up) and portrait. */
+function applyLandscapeStage(view) {
+  if (!view.stage) return;
+  /* A4 portrait: 210/297 ≈ 0.7071. Landscape: 297/210 ≈ 1.4142. */
+  const ratio = view.landscape ? "1.41421356" : "0.7070707071";
+  /* Override the stage aspect-ratio inline so it beats the CSS var(--sheet). */
+  view.stage.style.aspectRatio = ratio;
+  /* Widen/narrow the sheet-frame by updating --sheet on the frame element. */
+  const frameEl = view.frame;
+  if (frameEl) frameEl.style.setProperty("--sheet", ratio);
+  /* Trigger a paper-width sync so the dock/caption align. */
+  if (view.scroller) matchPaper(view, view.scroller);
+}
+
 function blank(view, number) {
   const sheet = el("div", { class: "sheet" });
   sheet.dataset.page = String(number);
+  /* In landscape 2-up mode, each sheet card is wider (landscape ratio). */
+  if (view.landscape) sheet.classList.add("is-landscape");
   const media = el("div", { class: "sheet-media" });
   const slots = el("div", { class: "pair-slots", attrs: { hidden: "hidden" } });
   media.append(el("canvas"), slots);
@@ -251,6 +288,7 @@ function syncSelection(view) {
     selectedPage: pairActive ? null : view.selectedPage,
     selectedSlot: pairActive ? view.selectedSlot : null,
     pageCount,
+    landscape: view.landscape,
   });
   for (const sheet of view.pool.values()) {
     const pageNum = Number(sheet.dataset.page);
@@ -332,7 +370,13 @@ async function settle(view) {
 function wanted(view) {
   const count = view.doc ? view.doc.numPages : 0;
   const pages = view.pages && view.pages.length ? view.pages : every(count);
-  return pages.filter((number) => number >= 1 && number <= count);
+  const valid = pages.filter((number) => number >= 1 && number <= count);
+  if (!view.landscape) return valid;
+  /* In 2-up mode each sheet shows page N (left) and N+1 (right).
+     We only need the left-page of each pair as the sheet key. */
+  const leaders = [];
+  for (let i = 0; i < valid.length; i += 2) leaders.push(valid[i]);
+  return leaders;
 }
 
 function every(count) {
@@ -487,13 +531,27 @@ async function draw(view, sheet) {
   const mark = String(view.mark);
   if (!view.open || !view.doc || sheet.dataset.drawn === mark || sheet.dataset.drawing === mark) return;
   sheet.dataset.drawing = mark;
-  let page = null;
+  let leftPage = null, rightPage = null;
   try {
     const pageNum = Number(sheet.dataset.page);
-    page = await view.doc.getPage(pageNum);
+    leftPage = await view.doc.getPage(pageNum);
     if (!drawing(view, sheet, mark)) return;
     const canvas = sheet.querySelector(".sheet-media > canvas");
-    const task = paint(view, sheet, page, canvas);
+    let task;
+    if (view.landscape) {
+      /* Fetch right-side page if it exists */
+      const rightNum = pageNum + 1;
+      if (rightNum <= view.doc.numPages) {
+        rightPage = await view.doc.getPage(rightNum);
+        if (!drawing(view, sheet, mark)) return;
+      }
+      const frame = frameOf(sheet);
+      task = paintLandscapeSheet(canvas, frame, leftPage, rightPage,
+        (view.rotations && view.rotations[pageNum]) || 0,
+        rightPage ? ((view.rotations && view.rotations[rightNum]) || 0) : 0);
+    } else {
+      task = paint(view, sheet, leftPage, canvas);
+    }
     if (!task || !drawing(view, sheet, mark)) return;
     view.tasks.push(task);
     await task.promise;
@@ -501,7 +559,8 @@ async function draw(view, sheet) {
   } catch {
     /* A cancelled draw, or a page that cannot be shown. The file can still be printed. */
   } finally {
-    if (page) page.cleanup();
+    if (leftPage) leftPage.cleanup();
+    if (rightPage) rightPage.cleanup();
     if (sheet.dataset.drawing === mark) sheet.dataset.drawing = "";
   }
 }

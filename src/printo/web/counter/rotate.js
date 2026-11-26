@@ -1,7 +1,8 @@
 /* Top-right rotate dock, selection chips, and Citizenship photo slot overlays. */
 
 import { el } from "./dom.js";
-import { clearIcon, rotateIcon } from "./icons.js";
+import { clearIcon, landscapeIcon, rotateIcon } from "./icons.js";
+import { syncLandscapeButton } from "./landscape.js";
 
 export function createRotateDock(hooks) {
   const dock = el("div", { class: "rotate-dock" });
@@ -26,19 +27,39 @@ export function createRotateDock(hooks) {
     },
   });
   button.append(rotateIcon());
-  dock.append(button, scope);
+
+  /* Landscape 2-up toggle — right beside the rotate button */
+  const lsBtn = el("button", {
+    class: "landscape-btn",
+    attrs: { type: "button", "aria-label": "2-up landscape", "aria-pressed": "false", title: "2-up per sheet (L)" },
+    on: {
+      click: (event) => {
+        event.stopPropagation();
+        if (lsBtn.disabled) return;
+        flickLandscapeIcon(lsBtn);
+        hooks.onLandscape?.();
+      },
+    },
+  });
+  lsBtn.append(landscapeIcon());
+
+  dock.append(button, lsBtn, scope);
   return dock;
 }
 
 export function syncRotateDock(dock, state) {
   if (!dock) return;
   const button = dock.querySelector(".rotate-btn");
-  const scope = dock.querySelector(".rotate-scope");
-  const label = dock.querySelector(".rotate-scope-label");
+  const lsBtn  = dock.querySelector(".landscape-btn");
+  const scope  = dock.querySelector(".rotate-scope");
+  const label  = dock.querySelector(".rotate-scope-label");
   if (!button || !scope || !label) return;
 
-  dock.hidden = !state.canRotate;
+  dock.hidden = !state.canRotate && !state.landscape;
   button.disabled = Boolean(state.busy);
+
+  /* Sync landscape button */
+  if (lsBtn) syncLandscapeButton(lsBtn, state);
 
   const chip = scopeLabel(state);
   if (chip) {
@@ -61,6 +82,18 @@ export function flickIcon(button) {
   icon.animate(
     [{ transform: "rotate(0deg)" }, { transform: "rotate(90deg)" }],
     { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+  );
+}
+
+/* Brief pop-scale on the landscape icon to confirm the toggle. */
+export function flickLandscapeIcon(button) {
+  if (!button || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const icon = button.querySelector("svg");
+  if (!icon) return;
+  icon.getAnimations().forEach((anim) => anim.cancel());
+  icon.animate(
+    [{ transform: "scale(1)" }, { transform: "scale(1.22)" }, { transform: "scale(1)" }],
+    { duration: 300, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
   );
 }
 

@@ -8,7 +8,7 @@ import { clampFit } from "./fit.js";
 import { trashIcon } from "./icons.js";
 import { clampPage, pageNumbers, paintPages, readPages, writePages } from "./pages.js";
 import { paintQueue, setOpen, writeBorn } from "./queue.js";
-import { closeSheets, focusSheets, pulseRotateButton, replaceSheetsDocument, rotateSheetsInPlace, showSheets, updateSheetsState } from "./sheets.js";
+import { closeSheets, focusSheets, pulseRotateButton, replaceSheetsDocument, rotateSheetsInPlace, setLandscapeMode, showSheets, updateSheetsState } from "./sheets.js";
 import { paintAsk, paintBin } from "./trash.js";
 
 const COPY_LIMIT = 20;
@@ -227,7 +227,7 @@ function freshDraft(job, count) {
   const draft = {
     choice: read.choice, from: read.from, to: read.to, count, copies: job.copies || 1, fit: 100,
     rotations: {}, imageAngle: 0, pair: null, selectedPage: null, selectedSlot: null,
-    rotating: false, pendingRotate: null, dirty: false, focus: "",
+    rotating: false, pendingRotate: null, dirty: false, focus: "", landscape: false,
   };
   draft.pages = writePages(draft);
   return draft;
@@ -414,6 +414,8 @@ function previewCopy(job) {
     onSelectSlot: (slotIndex) => toggleSlotSelection(job, slotIndex),
     onClearSelection: () => clearPreviewSelection(job),
     onRotate: () => handleRotate(job),
+    landscape: Boolean(draft.landscape),
+    onLandscape: () => handleLandscape(job),
   };
 }
 
@@ -428,7 +430,7 @@ function syncSheets(job) {
   const pages = previewPages(job);
   const draft = draftOf(job);
   if (draft.selectedPage != null && !pages.includes(draft.selectedPage)) draft.selectedPage = null;
-  updateSheetsState({ canRotate: canRotateJob(job), selectedPage: draft.selectedPage, selectedSlot: draft.selectedSlot, pair: draft.pair });
+  updateSheetsState({ canRotate: canRotateJob(job), selectedPage: draft.selectedPage, selectedSlot: draft.selectedSlot, pair: draft.pair, landscape: draft.landscape });
   focusSheets(pages);
 }
 
@@ -486,6 +488,20 @@ function handleRotate(job) {
     return;
   }
   rotatePdfDraft(target, draft);
+}
+
+function handleLandscape(job) {
+  const target = job || current();
+  if (!canRotateJob(target)) return;
+  const draft = draftOf(target);
+  draft.landscape = !draft.landscape;
+  draft.dirty = true;
+  /* Disable page selection when switching modes */
+  draft.selectedPage = null;
+  draft.selectedSlot = null;
+  setLandscapeMode(draft.landscape);
+  updateSheetsState({ selectedPage: null, selectedSlot: null, landscape: draft.landscape });
+  render();
 }
 
 function rotatePdfDraft(job, draft) {
@@ -572,7 +588,7 @@ function renderControls() {
     return;
   }
   const draft = draftOf(job);
-  const key = [job.id, job.status, job.can_print, job.can_retry, job.page_count, draft.choice, draft.from, draft.to, draft.copies, state.working, state.note].join("|");
+  const key = [job.id, job.status, job.can_print, job.can_retry, job.page_count, draft.choice, draft.from, draft.to, draft.copies, draft.landscape, state.working, state.note].join("|");
   if (node.dataset.key === key) return;
   const wasOpen = Boolean(node.querySelector(".page-span.open"));
   const focus = draft.focus || "";
@@ -687,6 +703,7 @@ async function printCurrent() {
   const draft = draftOf(job);
   const pages = job.page_count > 1 ? writePages(draft) : "all";
   const payload = { pages, copies: draft.copies, fit: clampFit(draft.fit) };
+  if (draft.landscape) payload.landscape = true;
   if (draft.rotations && Object.keys(draft.rotations).length) payload.rotations = draft.rotations;
   state.working = "print";
   state.note = "";
@@ -911,12 +928,13 @@ function onKey(event) {
     clearPreviewSelection();
     return;
   }
-  if ((event.key === "r" || event.key === "R") && !event.ctrlKey && !event.metaKey && !event.altKey) {
+  if ((event.key === "r" || event.key === "R" || event.key === "l" || event.key === "L") && !event.ctrlKey && !event.metaKey && !event.altKey) {
     const tag = event.target && event.target.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     const job = current();
     if (!canRotateJob(job) || state.ask || state.picking) return;
     event.preventDefault();
+    if (event.key === "l" || event.key === "L") { handleLandscape(job); return; }
     pulseRotateButton();
     handleRotate(job);
   }

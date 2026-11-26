@@ -76,3 +76,18 @@ Citizenship is two single pages on one sheet. The first file chosen sits near th
 The sheet on the counter is always A4, portrait, 210 by 297 millimetres, the paper in the tray. It does not grow wide or thin to match a file. The page keeps its own shape and sits in the middle of that sheet. The size slider scales the page already drawn on the sheet. The paper does not move, and the page is not drawn again while the slider moves, so it stays in step with the pointer. 100% is the normal fit: the whole page, as large as that sheet allows. The slider stops at 125% for every file. Anything past the edge of the sheet is cut off, in the preview and in the PDF that is printed, so the two match. A page that is already A4, at 100%, is still copied through unchanged. The stored file is left as it was, so a later size starts from the full page again.
 
 Rotation follows the same non-destructive rule: PDF page rotations are previewed in-place in the counter and sent as per-page quarter-turns at print time (`compose`), single photos re-render from their original bytes onto A4 via `RotationService` so sideways photos fill the sheet cleanly, and Citizenship sheets re-compose from their saved pieces while preserving fixed A4 portrait geometry.
+
+## 2-up landscape mode
+
+The landscape button in the preview dock (beside the rotate button, keyboard shortcut **L**) switches the counter into 2-up mode: each preview card shows two consecutive PDF pages side-by-side on a single A4 landscape sheet (297 × 210 mm, aspect ratio ≈ 1.4142). The preview and the printed output match exactly.
+
+**How it works (front-end only, no server change required):**
+
+- `landscape.js` owns the button, the icon, and `paintLandscapeSheet()` — a pure canvas composer that fetches both left and right PDF pages via pdf.js, renders each into its half of a landscape canvas (fitting each page to its half-width/full-height cell), and composites them with a faint divider line.
+- `sheets.js` reads `view.landscape` before every `draw()`. When true, `wanted()` returns only the left-page of each pair (pages 1, 3, 5 …), and each sheet card is sized to landscape ratio via `.is-landscape`. `setLandscapeMode(on)` is the exported toggle that rebuilds the pool.
+- `applyLandscapeStage()` updates `--sheet` on the frame element and `aspect-ratio` inline on the stage element so the visible preview paper switches shape smoothly.
+- `app.js` stores `draft.landscape` per job, calls `handleLandscape()` on toggle, and sends `landscape: true` in the print payload when active.
+- `rotate.js` / `syncRotateDock()` passes `landscape` to `syncLandscapeButton()` so the button lights up with an amber accent when 2-up is on.
+- The print backend receives `landscape: true` in the POST body. It should produce a landscape PDF with two pages side-by-side per sheet (this is the backend integration point to implement when ready).
+
+Page selection and rotation are automatically cleared when switching modes, since per-page granularity does not map to the paired layout.

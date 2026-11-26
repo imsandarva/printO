@@ -30,6 +30,18 @@ export function clearIcon() {
   return svg('<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>');
 }
 
+export function landscapeIcon() {
+  /* Two portrait pages side-by-side inside a landscape rectangle */
+  return svg(
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<rect x="1.8" y="4.5" width="20.4" height="15" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>' +
+    '<line x1="12" y1="6.5" x2="12" y2="17.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" opacity="0.55"/>' +
+    '<rect x="3.5" y="6.5" width="6.8" height="11" rx="1" ry="1" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.45"/>' +
+    '<rect x="13.7" y="6.5" width="6.8" height="11" rx="1" ry="1" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.45"/>' +
+    '</svg>',
+  );
+}
+
 function svg(markup) {
   const wrap = document.createElement("template");
   wrap.innerHTML = markup;
