@@ -17,7 +17,7 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | Store | One SQLite table for state. The file bytes stay on disk. Files are kept by name, not by a spoken code. A queue that also has unused visit columns from an earlier layout is still opened; those columns are left in place. A queue from a still newer layout is refused. |
 | Converter | One worker. PDFs are checked and copied, photos become A4 PDFs, and office or named UTF-8 text files go through LibreOffice, then that process exits. |
 | Print | Builds the exact PDF (chosen pages, repeated per copy) and hands it to CUPS. |
-| Watch | Follows that one CUPS job until CUPS is done with it. Sleeps only while a job is actually printing. |
+| Print runner | Feeds one confirmed page to CUPS at a time and sleeps while no run is waiting. |
 
 Sent files stay until someone at the counter deletes them. Delete moves a file to Trash: it leaves the counter, and the bytes stay until it is deleted from Trash. Nothing is deleted because it was printed, or because a few hours or days have passed. A half-written upload is still dropped the next time the shop starts, because it never became a file.
 
@@ -31,13 +31,13 @@ LibreOffice is heavy, and it lies about success: it can exit 0 and write nothing
 
 ## Job states
 
-`received → converting → ready → printing → done`
+`received → converting → ready → waiting → printing → done`
 
-`converting` or `printing` can become `failed`. A failed conversion can be retried. A failed print, or a job already sent, can be sent again. Delete moves a job to Trash and cancels the CUPS job if one was submitted. The row and the files stay. Deleting it from Trash is what removes them. A job in Trash can be put back.
+`converting` can become `failed`; a print run may move through `waiting`, `printing`, `stopping`, and `stopped`. A failed conversion can be retried. A failed print, or a job already sent, can be sent again. Delete moves a job to Trash and safely stops further pages; any page already with CUPS is allowed to finish. The row and the files stay. Deleting it from Trash is what removes them. A job in Trash can be put back.
 
 Two clicks cannot both print the same file: the status change happens in one SQLite write (`BEGIN IMMEDIATE`), and the second click finds the row already `printing`.
 
-`done` means CUPS finished with the job. On this USB laser that means the data was accepted and sent, not that a person watched the page come out. The counter message says "Sent to the printer." If CUPS reports the job aborted, or the laptop died mid-print, the file stays and can be sent again. A job still sitting in CUPS after 20 minutes is cancelled and marked failed, so it cannot surprise anyone later.
+Print runs are intentionally page-by-page. printO stages the selected pages as a reusable one-page PDF per source page, then sends exactly one CUPS job at a time. A page is counted only after CUPS confirms it. Stop never cancels the CUPS job: it marks the run as stopping, lets the current sheet finish, and does not send the next one. Progress is stored after every confirmed page, so Continue resumes at the next page and Reprint last page can cover an uncertain sheet. Only one run feeds the printer at once; later runs wait in request order. Printer trouble pauses the run without skipping a page. After a restart, a waiting, printing, or stopping run becomes stopped rather than resuming unattended.
 
 ## Who can see what
 
@@ -51,7 +51,7 @@ The code is drawn in black on white, two rows to a character, so a dark window c
 
 ## Power cuts and disk
 
-Uploads and generated PDFs are written to a temporary name in the same folder, fsynced, then renamed. SQLite uses WAL and `synchronous=FULL`. On startup, half-written temp files are deleted, job folders with no row (and rows with no file) are dropped, `converting` jobs are prepared again, and `printing` jobs are checked against CUPS. A print that never received a CUPS id is not called done.
+Uploads and generated PDFs are written to a temporary name in the same folder, fsynced, then renamed. SQLite uses WAL and `synchronous=FULL`. On startup, half-written temp files are deleted, job folders with no row (and rows with no file) are dropped, `converting` jobs are prepared again, and any active print run is marked stopped so the counter never guesses about a sheet that may still be in the printer.
 
 Uploads are refused when free space would fall below 512 MB plus the max file size (64 MB). Each phone is limited to 30 uploads per 10 minutes, and the shop to 60. One document can be at most 400 sheets, counting copies, so a mis-click cannot dump a huge job on a 4 GB laptop.
 

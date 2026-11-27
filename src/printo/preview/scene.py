@@ -147,7 +147,8 @@ class Scene:
             created = Job(
                 id=new_id, original_name=self._next_pair_name(), kind=PDF, source_ext=".pdf", status=READY,
                 failure_stage=None, message=ready(), byte_size=48_000, page_count=1, pages_spec="all", copies=1,
-                cups_job_id=None, created_at=moment, updated_at=moment, delete_after=None, trashed_at=None,
+                cups_job_id=None, print_total=None, print_done=0, print_reprint_last=False,
+                created_at=moment, updated_at=moment, delete_after=None, trashed_at=None,
             )
             self._jobs.append(created)
         result = present(created)
@@ -271,7 +272,8 @@ def _job(number: str, name: str, kind: str, ext: str, status: str, message: str,
     return Job(
         id=f"{int(number):032x}", original_name=name, kind=kind, source_ext=ext, status=status,
         failure_stage=failure, message=message, byte_size=48_000, page_count=pages, pages_spec=spec or ("all" if pages else None),
-        copies=copies or (1 if pages else None), cups_job_id=None, created_at=moment, updated_at=moment, delete_after=None, trashed_at=None,
+            copies=copies or (1 if pages else None), cups_job_id=None, print_total=None, print_done=0, print_reprint_last=False,
+            created_at=moment, updated_at=moment, delete_after=None, trashed_at=None,
     )
 
 

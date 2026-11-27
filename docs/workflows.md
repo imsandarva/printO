@@ -54,20 +54,24 @@ The counter screen puts the file list on the left, the print controls beside it,
 | `GET /admin/jobs/{id}/pair` | Normalized Citizenship slot boxes and saved rotation state (`pair` and `angle`). |
 | `POST /admin/jobs/{id}/rotate` | Rotate a Citizenship front/back slot (`target: "pair"`), whole Citizenship sheet (`"sheet"`), or single photo (`"image"`) clockwise. |
 | `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1, "fit": 100, "rotations": {"2": 90}}`. `fit` (40–125) and `rotations` (1-based page to 0/90/180/270) are optional. |
+| `POST /admin/jobs/{id}/stop` | Finishes the one page already with CUPS, then stops before another page is sent. |
+| `POST /admin/jobs/{id}/continue` | Continues a stopped run from its next unconfirmed page. |
+| `POST /admin/jobs/{id}/reprint-last` | Repeats the last confirmed page, then continues the stopped run. |
+| `POST /admin/jobs/{id}/discard` | Discards a stopped run and returns the file to Ready to print. |
 | `POST /admin/citizenship` | Body `{"ids": ["…", "…"]}`, two different single-page files, first then second. Answers with the new one-page file. |
 | `POST /admin/jobs/{id}/retry` | Prepare again after a conversion failure. |
-| `POST /admin/jobs/{id}/trash` | Move it to Trash. The file stays. A print that already started is cancelled. |
+| `POST /admin/jobs/{id}/trash` | Move it to Trash. The file stays. A page already with the printer is allowed to finish, but no further page is sent. |
 | `POST /admin/jobs/{id}/restore` | Bring it back from Trash. |
-| `DELETE /admin/jobs/{id}` | Delete it for good. Only once it is in Trash. Cancels the printer job if one is still going. |
+| `DELETE /admin/jobs/{id}` | Delete it for good. Only once it is in Trash. It never cuts off a page already with the printer. |
 | `GET /admin/events` | Server-sent events. A nudge, not the record. On reconnect, load the job list again. |
 
-A job object carries `name`, `status`, `label`, `message`, `page_count`, `pages`, `copies`, `can_print`, and `can_retry`. In the file list, the counter shows only the file name and when it arrived. When a file is selected, `message` can appear under the name for anything that is not ready yet. `label` and `status` stay on the wire for the program and other views; `status` values are `received`, `converting`, `ready`, `printing`, `done`, `failed`.
+A job object carries `name`, `status`, `label`, `message`, `page_count`, `pages`, `copies`, `print_total`, `print_done`, `can_print`, and `can_retry`. A printing run uses `waiting`, `printing`, `stopping`, and `stopped` around the usual file states. The counter shows "Printing page 37 of 100", makes Stop immediate, and then waits for the sheet already with the printer before showing Continue, Reprint last page, and Discard.
 
 On the counter, pages are one choice: all, even pages only, odd pages only, or a custom from–to range. For All, even, or odd, the line that says how many pages will print, such as `54 pages in total`, sits directly under the choice that is checked. A small gap keeps it with that choice, and a little more room comes before the next one. Choosing another option moves the line under the new choice. For a custom range, the same line sits under the From and To fields and follows the numbers as they are typed. The preview shows only those pages, in the order they will print. Changing the choice does not open the file again: the sheet dissolves into the new pages. From and to only appear for a custom range, and they stay between 1 and the last page. The print request is `all`, `odd`, `even`, `2`, or `1-3`. A list such as `1-3, 5` is still accepted. Out of range is refused. Copies have both direct number entry and −/+ controls; the default limit is 100 and can be changed with `PRINTO_MAX_COPIES`. Pages times copies cannot pass 400 sheets.
 
 Printing a `done` job sends it again. That is the reprint. The printer being off refuses the print and leaves the file ready. A second click while it is already `printing` is refused.
 
-`done` / "Sent to the printer." means CUPS took the job and finished sending it. It does not prove a sheet landed in the tray. If the result looks wrong, print it again. If it sits with the printer for 20 minutes, printO cancels it and keeps the file.
+`done` / "Sent to the printer." means CUPS confirmed each page in the run. It does not prove a person watched the final sheet land in the tray. If the result looks wrong, print it again. If the printer becomes unavailable or a page waits too long, the run stops in place so the owner can fix the printer and Continue deliberately.
 
 ## Citizenship
 

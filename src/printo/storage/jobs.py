@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from printo.clock import Clock, stamp
 from printo.domain.job import ID_RE, Job, display_name
 from printo.domain.kinds import KINDS
-from printo.domain.status import ALL
+from printo.domain.status import ALL, DONE, PRINTING, STOPPED, STOPPING, WAITING
 from printo.errors import UserError
 from printo.messages import arrived, ready, try_again, validation
 from printo.storage.database import Database
@@ -16,7 +16,7 @@ from printo.storage.database import Database
 _PAIR_NAME = re.compile(r"^Citizenship_(\d+)\.pdf$")
 
 _FIELDS = frozenset({
-    "message", "failure_stage", "page_count", "pages_spec", "copies", "cups_job_id", "delete_after",
+    "message", "failure_stage", "page_count", "pages_spec", "copies", "cups_job_id", "print_total", "print_done", "print_reprint_last", "delete_after",
 })
 class JobStore:
     def __init__(self, db: Database, clock: Clock) -> None:
@@ -75,6 +75,33 @@ class JobStore:
 
     def all(self) -> list[Job]:
         return self.matching(None, placed="all")
+
+    def next_waiting(self) -> Job | None:
+        rows = self.db.query(
+            "SELECT * FROM jobs WHERE status = ? AND trashed_at IS NULL ORDER BY updated_at ASC LIMIT 1", (WAITING,),
+        )
+        return _job(rows[0]) if rows else None
+
+    def complete_page(self, job_id: str, *, next_message: str, stopped_message: str, done_message: str) -> Job | None:
+        """Confirm one page atomically, so Stop cannot race a new submission into existence."""
+        if not ID_RE.fullmatch(job_id or ""):
+            return None
+        with self.db.transaction() as conn:
+            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None or row["status"] not in {PRINTING, STOPPING} or not row["print_total"]:
+                return None
+            done, total = int(row["print_done"]) + 1, int(row["print_total"])
+            if row["trashed_at"] or row["status"] == STOPPING or row["print_reprint_last"]:
+                status, text = STOPPED, stopped_message
+            elif done >= total:
+                status, text = DONE, done_message
+            else:
+                status, text = PRINTING, next_message
+            conn.execute(
+                "UPDATE jobs SET status = ?, message = ?, print_done = ?, print_reprint_last = 0, cups_job_id = NULL, updated_at = ? WHERE id = ?",
+                (status, text, done, stamp(self.clock.now()), job_id),
+            )
+            return _job(conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
 
     def place_in_trash(self, job_id: str) -> Job | None:
         return self._mark_trash(job_id, True)
@@ -157,6 +184,6 @@ def _job(row: sqlite3.Row) -> Job:
         id=row["id"], original_name=row["original_name"], kind=row["kind"],
         source_ext=row["source_ext"], status=row["status"], failure_stage=row["failure_stage"], message=row["message"],
         byte_size=row["byte_size"], page_count=row["page_count"], pages_spec=row["pages_spec"], copies=row["copies"],
-        cups_job_id=row["cups_job_id"], created_at=row["created_at"], updated_at=row["updated_at"],
+        cups_job_id=row["cups_job_id"], print_total=row["print_total"], print_done=row["print_done"], print_reprint_last=bool(row["print_reprint_last"]), created_at=row["created_at"], updated_at=row["updated_at"],
         delete_after=row["delete_after"], trashed_at=row["trashed_at"],
     )

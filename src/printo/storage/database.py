@@ -11,15 +11,15 @@ log = logging.getLogger("printo.db")
 
 # One table is enough: the file on disk is the document, and this row is only its state.
 # Version 2 only added visit columns this build does not read. They stay. Version 3 drops the spoken code.
-# Version 4 adds Trash. A file there is hidden from the counter, and its bytes stay until deleted from Trash.
-_KNOWN = 4
+# Version 4 adds Trash. Version 5 adds persisted, page-by-page print runs.
+_KNOWN = 6
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
         original_name TEXT NOT NULL,
         kind TEXT NOT NULL CHECK (kind IN ('pdf', 'image', 'office')),
         source_ext TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('received', 'converting', 'ready', 'printing', 'done', 'failed')),
+        status TEXT NOT NULL CHECK (status IN ('received', 'converting', 'ready', 'waiting', 'printing', 'stopping', 'stopped', 'done', 'failed')),
         failure_stage TEXT CHECK (failure_stage IS NULL OR failure_stage IN ('convert', 'print')),
         message TEXT NOT NULL,
         byte_size INTEGER NOT NULL CHECK (byte_size > 0),
@@ -27,6 +27,9 @@ _SCHEMA = (
         pages_spec TEXT,
         copies INTEGER CHECK (copies IS NULL OR copies > 0),
         cups_job_id TEXT,
+        print_total INTEGER CHECK (print_total IS NULL OR print_total > 0),
+        print_done INTEGER NOT NULL DEFAULT 0 CHECK (print_done >= 0),
+        print_reprint_last INTEGER NOT NULL DEFAULT 0 CHECK (print_reprint_last IN (0, 1)),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         delete_after TEXT,
@@ -88,6 +91,8 @@ class Database:
             conn.execute(statement)
         _drop_code(conn)
         _keep_trash(conn)
+        _add_print_runs(conn)
+        _add_reprint_flag(conn)
         if version < _KNOWN:
             conn.execute(f"PRAGMA user_version = {_KNOWN}")
         # An older build planned to delete files on its own. Nothing does that now, so forget those times.
@@ -115,7 +120,7 @@ class Database:
 # SQLite will not drop a UNIQUE column in place, so an older queue is copied without that column.
 _CORE = (
     "id", "original_name", "kind", "source_ext", "status", "failure_stage", "message", "byte_size",
-    "page_count", "pages_spec", "copies", "cups_job_id", "created_at", "updated_at", "delete_after", "trashed_at",
+    "page_count", "pages_spec", "copies", "cups_job_id", "print_total", "print_done", "print_reprint_last", "created_at", "updated_at", "delete_after", "trashed_at",
 )
 
 
@@ -125,6 +130,35 @@ def _keep_trash(conn: sqlite3.Connection) -> None:
     if not any(row[1] == "trashed_at" for row in info):
         conn.execute("ALTER TABLE jobs ADD COLUMN trashed_at TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_trashed ON jobs(trashed_at)")
+
+
+def _add_print_runs(conn: sqlite3.Connection) -> None:
+    """SQLite cannot widen the old status constraint, so copy the small queue table once."""
+    info = list(conn.execute("PRAGMA table_info(jobs)"))
+    if any(row[1] == "print_total" for row in info):
+        return
+    old = [row[1] for row in info]
+    listed = ", ".join(_ident(name) for name in old)
+    conn.execute("BEGIN")
+    try:
+        conn.execute("DROP TABLE IF EXISTS jobs_next")
+        conn.execute(_SCHEMA[0].replace("CREATE TABLE IF NOT EXISTS jobs", "CREATE TABLE jobs_next", 1))
+        conn.execute(f"INSERT INTO jobs_next ({listed}) SELECT {listed} FROM jobs")
+        conn.execute("DROP TABLE jobs")
+        conn.execute("ALTER TABLE jobs_next RENAME TO jobs")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_delete_after ON jobs(delete_after)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_trashed ON jobs(trashed_at)")
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+
+
+def _add_reprint_flag(conn: sqlite3.Connection) -> None:
+    info = list(conn.execute("PRAGMA table_info(jobs)"))
+    if not any(row[1] == "print_reprint_last" for row in info):
+        conn.execute("ALTER TABLE jobs ADD COLUMN print_reprint_last INTEGER NOT NULL DEFAULT 0")
 
 
 def _drop_code(conn: sqlite3.Connection) -> None:

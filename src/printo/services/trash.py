@@ -5,10 +5,10 @@ import logging
 
 from printo.convert.worker import Converter
 from printo.domain.job import Job
-from printo.domain.status import PRINTING, RECEIVED
+from printo.domain.status import PRINTING, RECEIVED, STOPPING, WAITING
 from printo.errors import UserError
 from printo.messages import not_found, removed, removed_but_printer, still_kept, trashed, trashed_but_printer, try_again
-from printo.printing.cups import PrinterPort
+from printo.printing.runner import PrintRunner
 from printo.services.events import Events
 from printo.storage.files import Files
 from printo.storage.jobs import JobStore
@@ -17,27 +17,29 @@ log = logging.getLogger("printo.trash")
 
 
 class Trash:
-    def __init__(self, jobs: JobStore, files: Files, cups: PrinterPort, events: Events, converter: Converter) -> None:
+    def __init__(self, jobs: JobStore, files: Files, runner: PrintRunner, events: Events, converter: Converter) -> None:
         self.jobs = jobs
         self.files = files
-        self.cups = cups
+        self.runner = runner
         self.events = events
         self.converter = converter
 
     async def move(self, job_id: str) -> tuple[str, Job]:
-        return await asyncio.to_thread(self._move, job_id)
+        job = await asyncio.to_thread(self._held, job_id)
+        warning = await self._stop(job)
+        return await asyncio.to_thread(self._move, job_id, warning)
 
     async def restore(self, job_id: str) -> Job:
         return await asyncio.to_thread(self._restore, job_id)
 
     async def forget(self, job_id: str) -> str:
-        return await asyncio.to_thread(self._forget, job_id)
+        job = await asyncio.to_thread(self._held, job_id)
+        warning = await self._stop(job)
+        return await asyncio.to_thread(self._forget, job_id, warning)
 
-    def _move(self, job_id: str) -> tuple[str, Job]:
+    def _move(self, job_id: str, warning: bool) -> tuple[str, Job]:
         job = self._held(job_id)
-        warning = False
         if job.trashed_at is None:
-            warning = self._stop(job)
             saved = self.jobs.place_in_trash(job.id) or self.jobs.get(job.id)
             if saved is None or not saved.trashed_at:
                 raise UserError(try_again(), 409)
@@ -59,11 +61,10 @@ class Trash:
         log.info("restored %s", saved.original_name)
         return saved
 
-    def _forget(self, job_id: str) -> str:
+    def _forget(self, job_id: str, warning: bool) -> str:
         job = self._held(job_id)
         if not job.trashed_at:
             raise UserError(still_kept(), 409)
-        warning = self._stop(job)
         if not self.jobs.delete(job.id):
             raise UserError(not_found(), 404)
         self.files.remove_job(job.id)
@@ -77,8 +78,11 @@ class Trash:
             raise UserError(not_found(), 404)
         return job
 
-    def _stop(self, job: Job) -> bool:
-        # True when a copy may still finish because the printer could not be stopped.
-        if job.status != PRINTING or not job.cups_job_id:
+    async def _stop(self, job: Job) -> bool:
+        """Use the same page boundary as Stop, even when a file is being removed."""
+        if job.status not in {WAITING, PRINTING, STOPPING}:
             return False
-        return not self.cups.cancel(job.cups_job_id)
+        # A page already in CUPS is allowed to finish; no delete action cuts a sheet in half.
+        warning = job.status in {PRINTING, STOPPING} and bool(job.cups_job_id)
+        await self.runner.request_stop(job.id)
+        return warning

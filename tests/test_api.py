@@ -39,7 +39,7 @@ def test_photo_is_prepared_and_printed_in_order(tmp_path):
         done = _wait(client, "नागरिकता.jpg", {"done"})
         assert done["message"] == "Sent to the printer."
         assert done["copies"] == 2
-        assert len(cups.submitted) == 1
+        assert len(cups.submitted) == 2
         assert cups.submitted[0][1] == "printo नागरिकता.jpg"
         saved = PdfReader(str(ctx.files.to_print(job["id"])))
         assert len(saved.pages) == 2
@@ -57,7 +57,7 @@ def test_selected_pdf_pages_repeat(tmp_path):
         pages = PdfReader(str(ctx.files.to_print(job["id"]))).pages
         assert len(pages) == 4
         assert [float(page.mediabox.width) for page in pages] == pytest.approx([A4_WIDTH] * 4)
-        assert len(cups.submitted) == 1
+        assert len(cups.submitted) == 4
 
 
 def test_fit_is_printed_and_out_of_range_is_refused(tmp_path):
@@ -100,10 +100,10 @@ def test_second_click_and_give_up(tmp_path):
         again = client.post(f"/admin/jobs/{job['id']}/print", json={"copies": 1})
         assert again.status_code == 409
         assert "already" in again.json()["message"]
-        failed = _wait(client, "a.pdf", {"failed"}, seconds=3)
-        assert "too long" in failed["message"]
-        assert cups.cancelled
-        assert failed["can_print"] is True
+        stopped = _wait(client, "a.pdf", {"stopped"}, seconds=3)
+        assert "Paused" in stopped["message"]
+        assert cups.cancelled == []
+        assert stopped["can_continue"] is True
 
 
 def test_phone_cannot_open_the_queue(tmp_path):

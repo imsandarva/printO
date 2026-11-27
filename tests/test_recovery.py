@@ -35,8 +35,8 @@ def test_startup_repairs_a_half_finished_queue(tmp_path):
     with TestClient(create_app(ctx), client=("127.0.0.1", 50000)) as client:
         jobs = {job["name"]: job for job in client.get("/admin/jobs").json()["jobs"]}
         assert "gone.pdf" not in jobs
-        assert jobs["sent.pdf"]["status"] == "done"
-        assert "interrupted" in jobs["lost.pdf"]["message"]
+        assert jobs["sent.pdf"]["status"] == "stopped"
+        assert jobs["lost.pdf"]["status"] == "stopped"
         assert not (ctx.files.jobs / "not-a-job").exists()
         assert not (ctx.files.partials / "left.partial").exists()
         ready = _wait(client, "photo.jpg", {"ready", "failed"}, seconds=5)

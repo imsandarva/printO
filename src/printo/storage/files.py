@@ -59,6 +59,14 @@ class Files:
     def to_print(self, job_id: str) -> Path:
         return self.job_dir(job_id) / "to-print.pdf"
 
+    def print_pages(self, job_id: str) -> Path:
+        return self.job_dir(job_id) / "print-pages"
+
+    def print_page(self, job_id: str, source_index: int) -> Path:
+        if source_index < 0:
+            raise ValueError("unsafe page index")
+        return self.print_pages(job_id) / f"page-{source_index + 1:04d}.pdf"
+
     def job_dir(self, job_id: str) -> Path:
         if not ID_RE.fullmatch(job_id or ""):
             raise ValueError("unsafe job id")

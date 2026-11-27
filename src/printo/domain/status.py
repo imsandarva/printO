@@ -1,15 +1,18 @@
 """Job states. A job only moves forward through an explicit transition in the store."""
 
 RECEIVED, CONVERTING, READY = "received", "converting", "ready"
-PRINTING, DONE, FAILED = "printing", "done", "failed"
+WAITING, PRINTING, STOPPING, STOPPED, DONE, FAILED = "waiting", "printing", "stopping", "stopped", "done", "failed"
 STAGE_CONVERT, STAGE_PRINT = "convert", "print"
-ALL = frozenset({RECEIVED, CONVERTING, READY, PRINTING, DONE, FAILED})
+ALL = frozenset({RECEIVED, CONVERTING, READY, WAITING, PRINTING, STOPPING, STOPPED, DONE, FAILED})
 
 LABELS = {
     RECEIVED: "Just arrived",
     CONVERTING: "Getting it ready",
     READY: "Ready to print",
+    WAITING: "Waiting to print",
     PRINTING: "Printing",
+    STOPPING: "Stopping after this page",
+    STOPPED: "Stopped",
     DONE: "Sent to the printer",
     FAILED: "Needs attention",
 }
@@ -33,3 +36,7 @@ def can_print(job: object) -> bool:
 def can_retry(job: object) -> bool:
     """The original file is still here, but turning it into a PDF failed."""
     return getattr(job, "status", "") == FAILED and getattr(job, "failure_stage", None) == STAGE_CONVERT
+
+
+def can_continue(job: object) -> bool:
+    return getattr(job, "status", "") == STOPPED and bool(getattr(job, "print_total", 0))

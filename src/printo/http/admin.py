@@ -89,6 +89,30 @@ async def print_job(request: Request, job_id: str, body: PrintBody) -> object:
     return succeed({"job": present(job)})
 
 
+@router.post("/jobs/{job_id}/stop")
+async def stop_print(request: Request, job_id: str) -> object:
+    job = await request.app.state.ctx.printing.stop_job(job_id)
+    return succeed({"job": present(job)})
+
+
+@router.post("/jobs/{job_id}/continue")
+async def continue_print(request: Request, job_id: str) -> object:
+    job = await request.app.state.ctx.printing.continue_job(job_id)
+    return succeed({"job": present(job)})
+
+
+@router.post("/jobs/{job_id}/reprint-last")
+async def reprint_last(request: Request, job_id: str) -> object:
+    job = await request.app.state.ctx.printing.reprint_last_page(job_id)
+    return succeed({"job": present(job)})
+
+
+@router.post("/jobs/{job_id}/discard")
+async def discard_print(request: Request, job_id: str) -> object:
+    job = await request.app.state.ctx.printing.discard_run(job_id)
+    return succeed({"job": present(job)})
+
+
 @router.post("/jobs/{job_id}/retry")
 def retry(request: Request, job_id: str) -> object:
     job = request.app.state.ctx.converter.retry(job_id)

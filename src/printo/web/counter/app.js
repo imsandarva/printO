@@ -590,7 +590,7 @@ function renderControls() {
     return;
   }
   const draft = draftOf(job);
-  const key = [job.id, job.status, job.can_print, job.can_retry, job.page_count, draft.choice, draft.from, draft.to, draft.copies, draft.landscape, state.working, state.note].join("|");
+  const key = [job.id, job.status, job.message, job.print_done, job.print_total, job.can_print, job.can_retry, job.can_continue, job.page_count, draft.choice, draft.from, draft.to, draft.copies, draft.landscape, state.working, state.note].join("|");
   if (node.dataset.key === key) return;
   const wasOpen = Boolean(node.querySelector(".page-span.open"));
   const focus = draft.focus || "";
@@ -599,7 +599,11 @@ function renderControls() {
   node.dataset.key = key;
   node.replaceChildren();
   if (job.can_print) node.append(settings(job, draft, wasOpen));
-  if (job.status === "printing" || state.working === "print") node.append(el("button", { class: "go", text: "Printing…", disabled: true }));
+  if (job.status === "printing") node.append(el("button", { class: "go stop-print", text: state.working === "stop" ? "Stopping…" : "Stop", disabled: Boolean(state.working), on: { click: stopCurrent } }));
+  else if (job.status === "stopping") node.append(el("button", { class: "go stopping-print", text: "Finishing this page…", disabled: true }));
+  else if (job.status === "waiting") node.append(el("button", { class: "go", text: "Waiting for the printer…", disabled: true }));
+  else if (job.can_continue) node.append(stoppedActions(job));
+  else if (state.working === "print") node.append(el("button", { class: "go", text: "Getting ready…", disabled: true }));
   else if (job.can_print || job.can_retry) node.append(action(job));
   if (state.note) node.append(el("p", { class: "note", text: state.note }));
   node.append(deleteRow(job));
@@ -704,6 +708,16 @@ function action(job) {
   return el("button", { class: "go", text: label, disabled: Boolean(state.working), on: { click: printCurrent } });
 }
 
+function stoppedActions(job) {
+  const row = el("div", { class: "run-actions" });
+  row.append(
+    el("button", { class: "go", text: state.working === "continue" ? "Continuing…" : "Continue", disabled: Boolean(state.working), on: { click: continueCurrent } }),
+    el("button", { class: "run-secondary", text: "Reprint last page", disabled: Boolean(state.working) || !job.print_done, on: { click: reprintLastPage } }),
+    el("button", { class: "run-secondary", text: "Discard", disabled: Boolean(state.working), on: { click: discardCurrent } }),
+  );
+  return row;
+}
+
 function renderTrashControls(node) {
   if (state.picking) {
     if (node.dataset.key !== "picking") { node.dataset.key = "picking"; node.replaceChildren(); }
@@ -745,6 +759,54 @@ async function printCurrent() {
     const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/print", payload);
     if (!body.ok) state.note = body.message || "Please try that again in a moment.";
     else { draft.dirty = false; onJob(body.job); loadPrinter(); return; }
+  } catch {
+    state.note = "Please try that again in a moment.";
+  } finally {
+    state.working = "";
+    render();
+  }
+}
+
+async function stopCurrent() {
+  const job = current();
+  if (!job || state.working || job.status !== "printing") return;
+  state.working = "stop";
+  state.note = "";
+  render();
+  try {
+    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/stop");
+    if (!body.ok) state.note = body.message || "Please try that again in a moment.";
+    else { onJob(body.job); return; }
+  } catch {
+    state.note = "Please try that again in a moment.";
+  } finally {
+    state.working = "";
+    render();
+  }
+}
+
+async function continueCurrent() {
+  await runStoppedAction("continue", "continue");
+}
+
+async function reprintLastPage() {
+  await runStoppedAction("reprint", "reprint-last");
+}
+
+async function discardCurrent() {
+  await runStoppedAction("discard", "discard");
+}
+
+async function runStoppedAction(kind, endpoint) {
+  const job = current();
+  if (!job || state.working || job.status !== "stopped") return;
+  state.working = kind;
+  state.note = "";
+  render();
+  try {
+    const body = await sendJSON("POST", "/admin/jobs/" + job.id + "/" + endpoint);
+    if (!body.ok) state.note = body.message || "Please try that again in a moment.";
+    else { onJob(body.job); return; }
   } catch {
     state.note = "Please try that again in a moment.";
   } finally {

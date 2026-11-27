@@ -20,6 +20,9 @@ class Job:
     pages_spec: str | None
     copies: int | None
     cups_job_id: str | None
+    print_total: int | None
+    print_done: int
+    print_reprint_last: bool
     created_at: str
     updated_at: str
     # Left from when files were removed on a timer. Always cleared. Never used to delete a file.

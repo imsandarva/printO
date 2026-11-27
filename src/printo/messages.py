@@ -1,7 +1,7 @@
 """Every sentence a person might read. The shop screen and the phone should not invent their own."""
 
 from printo.domain.job import Job
-from printo.domain.status import can_print, can_retry, label_for
+from printo.domain.status import can_continue, can_print, can_retry, label_for
 
 
 def received() -> str:
@@ -134,6 +134,26 @@ def printer_down() -> str:
 
 def printing() -> str:
     return "Printing."
+
+
+def waiting_to_print() -> str:
+    return "Waiting for the printer."
+
+
+def printing_page(current: int, total: int) -> str:
+    return f"Printing page {current} of {total}."
+
+
+def stopping() -> str:
+    return "Stopping after the page in the printer finishes."
+
+
+def stopped_at(done: int, total: int) -> str:
+    return f"Stopped at {done} of {total} pages."
+
+
+def paused_for_printer(reason: str) -> str:
+    return f"Paused at the printer: {reason}"
 
 
 def sent() -> str:
@@ -295,8 +315,11 @@ def present(job: Job) -> dict:
         "page_count": job.page_count,
         "pages": job.pages_spec,
         "copies": job.copies,
+        "print_total": job.print_total,
+        "print_done": job.print_done,
         "can_print": can_print(job),
         "can_retry": can_retry(job),
+        "can_continue": can_continue(job),
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "trashed_at": job.trashed_at,

@@ -47,7 +47,7 @@ def test_visit_columns_do_not_hide_the_queue(tmp_path):
     assert len(found) == 1 and found[0].original_name == "passport.jpg"
     columns = {row[1] for row in store.db.query("PRAGMA table_info(jobs)")}
     assert "public_code" not in columns and "trashed_at" in columns
-    assert store.db.query("PRAGMA user_version")[0][0] == 4
+    assert store.db.query("PRAGMA user_version")[0][0] == 6
     store.db.close()
 
 
@@ -75,7 +75,7 @@ def test_an_existing_queue_gains_trash_without_losing_a_file(tmp_path):
     found = store.all()
     assert len(found) == 1 and found[0].original_name == "bill.pdf" and found[0].trashed_at is None
     assert store.matching(placed="trash") == []
-    assert store.db.query("PRAGMA user_version")[0][0] == 4
+    assert store.db.query("PRAGMA user_version")[0][0] == 6
     store.db.close()
 
 

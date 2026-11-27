@@ -23,13 +23,14 @@ async def start(ctx: Context) -> None:
     ctx.files.drop_partials()
     ctx.events.bind(asyncio.get_running_loop())
     ctx.converter.start()
+    ctx.runner.start()
     recover(ctx)
     status = ctx.cups.status()
     log.info("%s — %s", status.summary, ctx.settings.data_dir)
 
 
 async def stop(ctx: Context) -> None:
-    await ctx.watch.stop()
+    await ctx.runner.stop()
     await ctx.converter.stop()
     ctx.db.close()
 
