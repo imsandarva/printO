@@ -46,7 +46,7 @@ def printer(request: Request) -> object:
 @router.get("/jobs")
 def list_jobs(request: Request, status: str | None = None, trashed: bool = False) -> object:
     jobs = request.app.state.ctx.jobs.matching(status, placed="trash" if trashed else "counter")
-    return succeed({"jobs": [present(job) for job in jobs]})
+    return succeed({"jobs": [present(job) for job in jobs], "max_copies": request.app.state.ctx.settings.max_copies})
 
 
 @router.get("/jobs/{job_id}")

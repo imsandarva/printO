@@ -17,7 +17,7 @@ def empty_file() -> str:
 
 
 def bad_type() -> str:
-    return "We can take a PDF, a Word document, or a photo. This one isn't any of those."
+    return "We can take a PDF, document, text file, or photo. This one isn't any of those."
 
 
 def disk_full() -> str:
@@ -232,9 +232,11 @@ def customer_copy() -> dict[str, str]:
         "offline_short": "Not connected",
         "offline": "Connection interrupted. Check your Wi-Fi and try again.",
         "heading": "What would you like to print?",
-        "support": "Select documents or photos from your phone.",
+        "support": "Choose a document, text file, or photo from your phone.",
         "choose": "Choose files",
-        "types": "PDF, Word, and photos",
+        "camera": "Take a photo",
+        "camera_add": "Take a photo",
+        "types": "PDF, documents, text files, and photos",
         "selected": "Selected files",
         "count_one": "1 file",
         "count_many": "{count} files",

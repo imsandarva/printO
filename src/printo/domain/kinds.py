@@ -19,4 +19,8 @@ EXTENSIONS = {
     ".doc": OFFICE,
     ".odt": OFFICE,
     ".rtf": OFFICE,
+    ".txt": OFFICE,
+    ".md": OFFICE,
+    ".csv": OFFICE,
+    ".tsv": OFFICE,
 }

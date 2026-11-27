@@ -15,7 +15,7 @@ The entrypoint (`printo`) only loads settings and starts the process. `wiring.py
 | Screens | The phone page and the counter. Plain files served by this process, so there is no second program and no build step to keep in memory. The phone page is one screen: choose, review, send, and see that the shop received the files. Previews are drawn on the page itself, on the phone and on the counter, so the browser's PDF window never frames a sheet. |
 | Ingest | Writes the upload to a temporary name, fsyncs it, then renames it into the job folder, then records the job. |
 | Store | One SQLite table for state. The file bytes stay on disk. Files are kept by name, not by a spoken code. A queue that also has unused visit columns from an earlier layout is still opened; those columns are left in place. A queue from a still newer layout is refused. |
-| Converter | One worker. PDF is checked and copied. Photos become an A4 PDF. Word goes through LibreOffice, then that process exits. |
+| Converter | One worker. PDFs are checked and copied, photos become A4 PDFs, and office or named UTF-8 text files go through LibreOffice, then that process exits. |
 | Print | Builds the exact PDF (chosen pages, repeated per copy) and hands it to CUPS. |
 | Watch | Follows that one CUPS job until CUPS is done with it. Sleeps only while a job is actually printing. |
 
@@ -25,7 +25,7 @@ Idle, the process is waiting: no timer walks the queue, and LibreOffice is not r
 
 ## Why everything becomes a PDF
 
-Page counts, page ranges (all, odd, even, or a from–to span), copies, and the printer then share one path. A valid PDF is copied through unchanged, so fonts embedded in the file (Nepali included) are not rebuilt. Photos are placed on a white A4 page at 150 dpi, which is enough for this laser and much lighter than 300 dpi. A photo is one page: a later frame that is only an HDR gain map, a depth image, or a thumbnail is not printed. A multi-page TIFF still prints every sheet. Word and similar files are the only ones that start LibreOffice.
+Page counts, page ranges (all, odd, even, or a from–to span), copies, and the printer then share one path. A valid PDF is copied through unchanged, so fonts embedded in the file (Nepali included) are not rebuilt. Photos are placed on a white A4 page at 150 dpi, which is enough for this laser and much lighter than 300 dpi. A photo is one page: a later frame that is only an HDR gain map, a depth image, or a thumbnail is not printed. A multi-page TIFF still prints every sheet. Word-style documents and named UTF-8 text files are the only ones that start LibreOffice. Text uploads are restricted to `.txt`, `.md`, `.csv`, and `.tsv`, and are decoded before acceptance, so a video or arbitrary binary cannot masquerade as a printable text file.
 
 LibreOffice is heavy, and it lies about success: it can exit 0 and write nothing, and two copies will fight over one profile. So it runs one at a time, with its own profile under the data folder (the shop account's fonts are still used), and the result is kept only if it is a real PDF. On a timeout the whole process group is killed.
 

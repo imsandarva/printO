@@ -1,6 +1,7 @@
 /* Decide what a file is from its first bytes, the same way the shop does. The name is only a hint. */
 
 const HEIF = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "heif", "mif1", "msf1"]);
+const TEXT = new Set(["txt", "md", "csv", "tsv"]);
 
 export async function assess(file, maxBytes) {
   if (!file || file.size === 0) return { ok: false, reason: "empty", kind: "", ext: "" };
@@ -17,6 +18,9 @@ async function classify(file) {
   const ext = extension(file.name);
   // A Word file is a zip. The shop checks the inside; here the header is enough to let them try.
   if ((ext === "docx" || ext === "odt") && isZip(head)) return { ok: true, kind: "doc", ext };
+  // Plain text has no signature. Its extension keeps arbitrary text-like downloads out of the picker;
+  // the shop validates the complete file before accepting it.
+  if (TEXT.has(ext) && looksLikeText(head)) return { ok: true, kind: "doc", ext };
   return { ok: false, kind: "", ext };
 }
 
@@ -42,6 +46,15 @@ function extension(name) {
 
 function isZip(head) {
   return starts(head, [0x50, 0x4b, 0x03, 0x04]);
+}
+
+function looksLikeText(head) {
+  try {
+    const value = new TextDecoder("utf-8", { fatal: true }).decode(head);
+    return !/[\x00-\x08\x0b\x0e-\x1f]/.test(value);
+  } catch {
+    return false;
+  }
 }
 
 function starts(head, bytes) {

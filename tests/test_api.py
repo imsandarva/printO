@@ -118,7 +118,9 @@ def test_phone_cannot_open_the_queue(tmp_path):
 
 def test_rejects_bad_files(tmp_path):
     with running(tmp_path, max_upload_bytes=64) as (client, _ctx, _cups):
-        junk = _upload(client, "notes.txt", b"hello")
+        text = _upload(client, "notes.txt", b"hello")
+        assert text.status_code == 201
+        junk = _upload(client, "video.txt", b"\x00\x00\x00\x18ftypmp42")
         assert junk.status_code == 400 and "PDF" in junk.json()["message"]
         empty = _upload(client, "empty.pdf", b"")
         assert empty.status_code == 400 and "empty" in empty.json()["message"]

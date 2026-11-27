@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # The counter, on its own, wired to the real shop data while you change the page.
-# This does not start the hotspot. It starts printO only when nothing is listening yet.
+# This does not start the hotspot. It replaces an earlier local shop or counter first.
 # Type off in this window to close it.
 
 set -euo pipefail
+source "$(dirname "$0")/scripts/common.sh"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+PORT="$(shop_port "$ROOT")"
+PREVIEW_PORT="$(shop_preview_port "$PORT")"
 cd "$ROOT"
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
+stop_active_shop "$ROOT" "$PORT" "$PREVIEW_PORT"
 exec python3 -m printo.preview "$@"

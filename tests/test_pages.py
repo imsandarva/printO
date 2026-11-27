@@ -10,6 +10,8 @@ def test_phone_sees_the_send_page_and_not_the_counter(tmp_path):
         assert "/admin" not in page.text
         assert "What would you like to print?" in page.text
         assert "Choose files" in page.text
+        assert "Sandipa Stationery" in page.text
+        assert "capture=\"environment\"" in page.text
         assert phone.get("/c/customer.js").status_code == 200
         assert phone.get("/c/transfer.js").status_code == 200
         assert "/upload" in phone.get("/c/transfer.js").text
@@ -39,4 +41,5 @@ def test_counter_page_is_served_on_the_laptop(tmp_path):
         assert client.get("/c/customer.css").status_code == 200
         assert client.get("/c/nope.css").status_code == 404
         assert client.get("/favicon.svg").headers["content-type"].startswith("image/svg")
+        assert client.get("/admin/jobs").json()["max_copies"] == 100
         assert client.get("/admin").status_code == 200

@@ -53,3 +53,13 @@ def test_empty_and_text(tmp_path):
     with pytest.raises(UserError) as caught:
         detect(text)
     assert "PDF" in caught.value.message
+
+
+def test_named_utf8_text_is_allowed_but_binary_is_not(tmp_path):
+    note = tmp_path / "note.md"
+    note.write_text("# A note\n\nA line to print.\n", encoding="utf-8")
+    assert detect(note, note.name) == ("office", ".md")
+    binary = tmp_path / "not-really-text.txt"
+    binary.write_bytes(b"\x00\xff\x00")
+    with pytest.raises(UserError):
+        detect(binary, binary.name)

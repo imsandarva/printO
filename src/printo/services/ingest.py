@@ -36,7 +36,7 @@ class Ingest:
         job: Job | None = None
         try:
             size = await _spool(partial, blocks, self.settings.max_upload_bytes)
-            kind, ext = detect(partial)
+            kind, ext = detect(partial, filename)
             job = self._commit(partial, filename, kind, ext, size)
         finally:
             if job is None:

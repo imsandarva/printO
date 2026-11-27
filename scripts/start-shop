@@ -7,6 +7,7 @@ source "$(dirname "$0")/hotspot.sh"
 
 ROOT="$(shop_root "$0")"
 PORT="$(shop_port "$ROOT")"
+PREVIEW_PORT="$(shop_preview_port "$PORT")"
 cd "$ROOT"
 PYTHON="$ROOT/.venv/bin/python"
 PY="$ROOT/.venv/bin/printo"
@@ -69,10 +70,10 @@ if [[ ! -x "$PY" ]]; then
   printf '%s\n' "printO isn't installed in this folder yet. From here, run: python3 -m venv .venv && .venv/bin/pip install -e ."
   exit 1
 fi
+stop_active_shop "$ROOT" "$PORT" "$PREVIEW_PORT"
 if shop_port_open "$PORT"; then
-  printf '%s\n' "printO is already running in a terminal. Type off there to close it."
-  open_window "http://127.0.0.1:${PORT}/admin/" || true
-  exit 0
+  printf '%s\n' "Something else is using the shop address. Close that program, then start the shop again."
+  exit 1
 fi
 
 printf '%s\n' "This computer will leave its current wifi and become the shop hotspot."

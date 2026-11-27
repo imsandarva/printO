@@ -1,5 +1,6 @@
-"""Decide what a file is from its bytes. The phone's filename and content type are not trusted."""
+"""Decide what a printable file is from its bytes; plain text also needs its safe extension."""
 
+import codecs
 import zipfile
 from pathlib import Path
 
@@ -8,13 +9,15 @@ from printo.errors import UserError
 from printo.messages import bad_type, empty_file
 
 _HEIF = {b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"heif", b"mif1", b"msf1"}
+_TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".tsv"}
 
 
-def detect(path: Path) -> tuple[str, str]:
-    head = path.read_bytes()[:64]
+def detect(path: Path, filename: str = "") -> tuple[str, str]:
+    with path.open("rb") as handle:
+        head = handle.read(64)
     if not head and path.stat().st_size == 0:
         raise UserError(empty_file())
-    found = _from_head(head) or _from_zip(path, head)
+    found = _from_head(head) or _from_zip(path, head) or _plain_text(path, filename)
     if found is None:
         raise UserError(bad_type())
     return found
@@ -64,3 +67,26 @@ def _odt(archive: zipfile.ZipFile) -> bool:
     if info.file_size > 128:
         return False
     return archive.read("mimetype").startswith(b"application/vnd.oasis.opendocument.text")
+
+
+def _plain_text(path: Path, filename: str) -> tuple[str, str] | None:
+    """Allow only named, UTF-8 text documents, never a binary file merely named ``.txt``."""
+    ext = Path(filename).suffix.lower()
+    if ext not in _TEXT_EXTENSIONS:
+        return None
+    decoder = codecs.getincrementaldecoder("utf-8-sig")("strict")
+    try:
+        with path.open("rb") as handle:
+            while block := handle.read(64 * 1024):
+                text = decoder.decode(block)
+                if _has_binary_controls(text):
+                    return None
+        if _has_binary_controls(decoder.decode(b"", final=True)):
+            return None
+    except UnicodeDecodeError:
+        return None
+    return OFFICE, ext
+
+
+def _has_binary_controls(text: str) -> bool:
+    return any(ord(char) < 32 and char not in "\t\n\r\f" for char in text)

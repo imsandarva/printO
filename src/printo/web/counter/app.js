@@ -11,7 +11,7 @@ import { paintQueue, setOpen, writeBorn } from "./queue.js";
 import { closeSheets, focusSheets, pulseRotateButton, replaceSheetsDocument, rotateSheetsInPlace, setLandscapeMode, showSheets, updateSheetsState } from "./sheets.js";
 import { paintAsk, paintBin } from "./trash.js";
 
-const COPY_LIMIT = 20;
+const DEFAULT_COPY_LIMIT = 100;
 const state = {
   jobs: [],
   seen: new Set(),
@@ -39,6 +39,7 @@ const state = {
   note: "",
   toast: "",
   undo: "",
+  copyLimit: DEFAULT_COPY_LIMIT,
 };
 
 function boot() {
@@ -69,6 +70,7 @@ async function loadJobs() {
   try {
     const [active, bin] = await Promise.all([readJSON("/admin/jobs"), readJSON("/admin/jobs?trashed=1")]);
     if (!active.ok || !Array.isArray(active.jobs) || !bin.ok || !Array.isArray(bin.jobs)) throw new Error("jobs");
+    state.copyLimit = validCopyLimit(active.max_copies);
     take(active.jobs, bin.jobs, announce);
     state.offline = false;
   } catch {
@@ -219,13 +221,13 @@ function storeDraft(job, count) {
 
 function sameDraft(draft, job, count) {
   const read = readPages(job.pages, count);
-  return draft.choice === read.choice && draft.from === read.from && draft.to === read.to && draft.copies === (job.copies || 1) && draft.count === count;
+  return draft.choice === read.choice && draft.from === read.from && draft.to === read.to && draft.copies === initialCopies(job) && draft.count === count;
 }
 
 function freshDraft(job, count) {
   const read = readPages(job.pages, count);
   const draft = {
-    choice: read.choice, from: read.from, to: read.to, count, copies: job.copies || 1, fit: 100,
+    choice: read.choice, from: read.from, to: read.to, count, copies: initialCopies(job), fit: 100,
     rotations: {}, imageAngle: 0, pair: null, selectedPage: null, selectedSlot: null,
     rotating: false, pendingRotate: null, dirty: false, focus: "", landscape: false,
   };
@@ -614,13 +616,13 @@ function settings(job, draft, wasOpen) {
 
 function boundFocus() {
   const field = document.activeElement;
-  if (!field || (field.id !== "page-from" && field.id !== "page-to")) return null;
+  if (!field || (field.id !== "page-from" && field.id !== "page-to" && field.id !== "copies")) return null;
   return { id: field.id, caret: field.selectionStart };
 }
 
 function restoreFocus(focus, typing, wasOpen) {
   if (focus) {
-    const select = focus === "page-from" || focus === "page-to";
+    const select = focus === "page-from" || focus === "page-to" || focus === "copies";
     if (select && !wasOpen) requestAnimationFrame(() => focusField(focus, null, true));
     else focusField(focus, null, select);
     return;
@@ -640,13 +642,38 @@ function copiesField(job, draft) {
   const wrap = el("div", { class: "field" });
   wrap.append(el("span", { text: "Copies" }));
   const stepper = el("div", { class: "stepper" });
+  const input = el("input", {
+    class: "copy-input",
+    attrs: { id: "copies", type: "text", inputmode: "numeric", pattern: "[0-9]*", "aria-label": "Number of copies" },
+    on: { focus: (event) => event.currentTarget.select(), input: (event) => typeCopies(draft, event.currentTarget), blur: (event) => settleCopies(draft, event.currentTarget) },
+  });
+  input.value = String(draft.copies);
   stepper.append(
     step("−", "Fewer copies", draft.copies <= 1, () => bump(job, -1)),
-    el("strong", { text: String(draft.copies) }),
-    step("+", "More copies", draft.copies >= COPY_LIMIT, () => bump(job, 1)),
+    input,
+    step("+", "More copies", draft.copies >= copyLimit(), () => bump(job, 1)),
   );
   wrap.append(stepper);
   return wrap;
+}
+
+function typeCopies(draft, field) {
+  field.value = field.value.replace(/\D/g, "");
+  const value = field.value;
+  if (!/^\d+$/.test(value)) return;
+  const copies = Number(value);
+  if (!Number.isSafeInteger(copies) || copies < 1 || copies > copyLimit()) return;
+  draft.copies = copies;
+  draft.dirty = true;
+}
+
+function settleCopies(draft, field) {
+  const raw = Number(field.value);
+  const copies = Number.isSafeInteger(raw) ? Math.min(copyLimit(), Math.max(1, raw)) : draft.copies;
+  draft.copies = copies;
+  draft.dirty = true;
+  field.value = String(copies);
+  requestAnimationFrame(render);
 }
 
 function step(text, label, disabled, onClick) {
@@ -655,12 +682,18 @@ function step(text, label, disabled, onClick) {
 
 function bump(job, delta) {
   const draft = draftOf(job);
-  const next = Math.min(COPY_LIMIT, Math.max(1, draft.copies + delta));
+  const next = Math.min(copyLimit(), Math.max(1, draft.copies + delta));
   if (next === draft.copies) return;
   draft.copies = next;
   draft.dirty = true;
   render();
 }
+
+function copyLimit() { return state.copyLimit; }
+
+function initialCopies(job) { return Math.min(copyLimit(), Math.max(1, Number(job.copies) || 1)); }
+
+function validCopyLimit(value) { return Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_COPY_LIMIT; }
 
 function action(job) {
   if (job.can_retry && !job.can_print) {

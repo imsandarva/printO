@@ -16,7 +16,7 @@ python3 -m venv .venv
 
 ## Open the shop
 
-From this folder, one command. It stays in that window: it starts the shop wifi, printO, and the counter, and it shows a code for the customer page. A phone joins that wifi, then scans the code or types the address under it. Type off to close the shop. The shop finishes, turns the shop wifi off, and tries to put the previous wifi back. The usual close key does this same stop, so the computer does not offer to send a crash report.
+From this folder, one command. It stays in that window: it starts the shop wifi, printO, and the counter, and it shows a code for the customer page. If this checkout already has a shop or counter open elsewhere, the command closes it first and starts a fresh shop in this window. A phone joins that wifi, then scans the code or types the address under it. Type off to close the shop. The shop finishes, turns the shop wifi off, and tries to put the previous wifi back. The usual close key does this same stop, so the computer does not offer to send a crash report.
 
 ```bash
 ./scripts/start-shop
@@ -34,7 +34,7 @@ To look at the counter while changing it, without starting the shop and without 
 ./shopkeeperpanel
 ```
 
-That opens the same counter the shopkeeper would see, with the real files already in the shop. It does not turn on the hotspot. If printO is not running yet, it starts only that part in the background; if the shop is already open, it reuses it. Saving the counter page on disk updates the open window. Type off when you are done. It listens on a port just above the shop's, so both can be open together.
+That opens the same counter the shopkeeper would see, with the real files already in the shop. It does not turn on the hotspot. Like `start-shop`, it closes an earlier shop or counter from this checkout before opening a fresh counter in the terminal where you ran it. Saving the counter page on disk updates the open window. Type off when you are done. It listens on a port just above the shop's.
 
 The wifi name and password are saved in `data/wifi` the first time (`printO` / `printo123` until you change them). They are shown when the shop starts. Write them where customers can see them too. The address of the page is saved there as well, once the shop has started.
 
@@ -55,7 +55,7 @@ A `printo.toml` in the working directory overrides the defaults. Environment var
 | `PRINTO_MAX_UPLOAD_BYTES` | 67108864 | Largest upload |
 | `PRINTO_MIN_FREE_BYTES` | 536870912 | Refuse uploads below this free space, plus the max upload |
 | `PRINTO_MAX_SHEETS` | 400 | Most pages in one file, and most sheets in one print (pages × copies) |
-| `PRINTO_MAX_COPIES` | 20 | |
+| `PRINTO_MAX_COPIES` | 100 | Most copies for one print request; pages × copies still cannot exceed `PRINTO_MAX_SHEETS` |
 | `PRINTO_OFFICE_TIMEOUT` | 120 | Seconds before LibreOffice is killed |
 
 Example `printo.toml`:

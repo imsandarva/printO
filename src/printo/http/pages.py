@@ -90,6 +90,7 @@ def _customer_html(boot: dict) -> str:
         "__HEADING__": escape(copy["heading"]),
         "__SUPPORT__": escape(copy["support"]),
         "__CHOOSE__": escape(copy["choose"]),
+        "__CAMERA__": escape(copy["camera"]),
         "__TYPES__": escape(copy["types"]),
         "__NOSCRIPT__": escape(copy["noscript"]),
         "__BOOT__": payload,

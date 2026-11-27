@@ -4,7 +4,7 @@
 
 The customer joins the shop wifi. The name and password are in the window where the shop was started, and in `data/wifi` (created the first time the shop starts). They scan the code in that window, or type the address under it, usually `http://10.42.0.1:8088/`. The page opens in the phone's own browser.
 
-They choose their files, check them, and send them. The page confirms when the shop computer has them. Printing still happens here.
+They choose their files or take a photo, check them, and send them. The page confirms when the shop computer has them. Printing still happens here.
 
 On this computer the counter is already open. `scripts/start-shop` opened it, and that same window is the shop: leave it open, and type off to close the shop. If the counter window was closed, `scripts/open-counter` opens it again. Files that arrived while it was closed are already there, under their own names. They choose pages, how many copies, and how large it sits on the page, then press Print. The page is shown in grey because the printer is black and white.
 
@@ -24,7 +24,7 @@ Send moves the files together, a few at a time. Each row says whether it is wait
 
 `POST /upload` with one form field, `file`. The page calls this once per file.
 
-Accepted: PDF, Word (`.doc`, `.docx`), OpenDocument text, Rich Text, and photos (JPEG, PNG, WEBP, GIF, BMP, TIFF, HEIC). The type is read from the bytes, not from the filename. A photo is one page, including a phone picture that also carries an HDR gain map. A multi-page TIFF still prints every sheet.
+Accepted: PDF, Word (`.doc`, `.docx`), OpenDocument text, Rich Text, named UTF-8 text (`.txt`, `.md`, `.csv`, `.tsv`), and photos (JPEG, PNG, WEBP, GIF, BMP, TIFF, HEIC). The chooser offers only these printable types; the server reads file bytes as well, so a video, audio file, or arbitrary binary cannot be accepted by renaming it. A photo is one page, including a phone picture that also carries an HDR gain map. A multi-page TIFF still prints every sheet.
 
 ```bash
 curl -s -F "file=@/path/to/file.pdf" http://127.0.0.1:8088/upload
@@ -63,7 +63,7 @@ The counter screen puts the file list on the left, the print controls beside it,
 
 A job object carries `name`, `status`, `label`, `message`, `page_count`, `pages`, `copies`, `can_print`, and `can_retry`. In the file list, the counter shows only the file name and when it arrived. When a file is selected, `message` can appear under the name for anything that is not ready yet. `label` and `status` stay on the wire for the program and other views; `status` values are `received`, `converting`, `ready`, `printing`, `done`, `failed`.
 
-On the counter, pages are one choice: all, even pages only, odd pages only, or a custom from–to range. For All, even, or odd, the line that says how many pages will print, such as `54 pages in total`, sits directly under the choice that is checked. A small gap keeps it with that choice, and a little more room comes before the next one. Choosing another option moves the line under the new choice. For a custom range, the same line sits under the From and To fields and follows the numbers as they are typed. The preview shows only those pages, in the order they will print. Changing the choice does not open the file again: the sheet dissolves into the new pages. From and to only appear for a custom range, and they stay between 1 and the last page. The print request is `all`, `odd`, `even`, `2`, or `1-3`. A list such as `1-3, 5` is still accepted. Out of range is refused. Copies are 1 to 20. Pages times copies cannot pass 400 sheets.
+On the counter, pages are one choice: all, even pages only, odd pages only, or a custom from–to range. For All, even, or odd, the line that says how many pages will print, such as `54 pages in total`, sits directly under the choice that is checked. A small gap keeps it with that choice, and a little more room comes before the next one. Choosing another option moves the line under the new choice. For a custom range, the same line sits under the From and To fields and follows the numbers as they are typed. The preview shows only those pages, in the order they will print. Changing the choice does not open the file again: the sheet dissolves into the new pages. From and to only appear for a custom range, and they stay between 1 and the last page. The print request is `all`, `odd`, `even`, `2`, or `1-3`. A list such as `1-3, 5` is still accepted. Out of range is refused. Copies have both direct number entry and −/+ controls; the default limit is 100 and can be changed with `PRINTO_MAX_COPIES`. Pages times copies cannot pass 400 sheets.
 
 Printing a `done` job sends it again. That is the reprint. The printer being off refuses the print and leaves the file ready. A second click while it is already `printing` is refused.
 
@@ -75,7 +75,7 @@ Citizenship sits at the top right of the counter. It puts two single pages on on
 
 ## Changing the counter
 
-`./shopkeeperpanel` opens the same counter with the same files already in the shop. It does not turn on the hotspot. If printO is not running, it starts only that part in the background. Leave that window open while you change the page; saving updates what you see. Type off when you are done looking.
+`./shopkeeperpanel` opens the same counter with the same files already in the shop. It does not turn on the hotspot. Starting it closes an earlier shop or counter from this checkout, then opens a fresh counter in the terminal you used. Leave that window open while you change the page; saving updates what you see. Type off when you are done looking.
 
 ## Keeping files
 

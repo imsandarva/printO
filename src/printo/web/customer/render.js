@@ -1,6 +1,6 @@
 /* Paint the one page. Progress updates a row; it does not rebuild the list. */
 
-import { el } from "./dom.js";
+import { el, icon } from "./dom.js";
 import { filesLabel, fill, sizeLabel, typeName } from "./format.js";
 import { checkIcon, closeIcon, fileIcon, plusIcon } from "./icons.js";
 import { counts, meterOf } from "./session.js";
@@ -23,6 +23,7 @@ export function createView(handlers) {
     phasePct: document.getElementById("phase-pct"),
     list: document.getElementById("list"),
     add: document.getElementById("add"),
+    cameraAdd: document.getElementById("camera-add"),
     clear: document.getElementById("clear"),
     done: document.getElementById("done"),
     doneTitle: document.getElementById("done-title"),
@@ -45,8 +46,11 @@ export function createView(handlers) {
   nodes.list.addEventListener("click", (event) => onListClick(event, handlers));
   nodes.clear.addEventListener("click", handlers.onClear);
   nodes.add.addEventListener("click", handlers.onAdd);
+  nodes.cameraAdd.addEventListener("click", handlers.onCamera);
   nodes.choose = document.getElementById("choose");
   nodes.choose.addEventListener("click", handlers.onChoose);
+  nodes.camera = document.getElementById("camera");
+  nodes.camera.addEventListener("click", handlers.onCamera);
   nodes.send.addEventListener("click", handlers.onSend);
   nodes.more.addEventListener("click", handlers.onMore);
   nodes.undo.addEventListener("click", handlers.onUndo);
@@ -70,6 +74,7 @@ function prepare(nodes, copy) {
   nodes.more.textContent = copy.send_more;
   nodes.send.textContent = copy.send;
   nodes.add.replaceChildren(plusIcon(), el("span", { text: copy.add }));
+  nodes.cameraAdd.replaceChildren(cameraIcon(), el("span", { text: copy.camera_add }));
 }
 
 function renderChrome(nodes, session) {
@@ -88,6 +93,7 @@ function renderChrome(nodes, session) {
   nodes.listHead.hidden = phase !== "review";
   nodes.phase.hidden = phase === "review" || phase === "empty" || phase === "done";
   nodes.add.hidden = session.sending;
+  nodes.cameraAdd.hidden = session.sending;
   nodes.clear.hidden = session.sending || !session.items.length || session.items.some((item) => item.status === "received");
   if (phase === "sending") paintSending(nodes, session, tally);
   else if (phase === "partial") paintPartial(nodes, copy, tally);
@@ -101,6 +107,10 @@ function renderChrome(nodes, session) {
   nodes.send.disabled = session.sending || !session.online || (!hasIdle && !hasFailed);
   nodes.send.textContent = session.sending ? copy.sending : (!hasIdle && hasFailed ? copy.retry : copy.send);
   nodes.main.setAttribute("aria-busy", session.sending ? "true" : "false");
+}
+
+function cameraIcon() {
+  return icon('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5h2.7l1.25-2h7.1l1.25 2h2.7A1.5 1.5 0 0 1 21 10v7.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5V10a1.5 1.5 0 0 1 1.5-1.5ZM12 16.25a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round"/></svg>');
 }
 
 function paintSending(nodes, session, tally) {

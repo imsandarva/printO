@@ -13,6 +13,7 @@ const boot = JSON.parse(document.getElementById("boot").textContent);
 const session = createSession(boot);
 const view = createView({
   onChoose: () => openPicker(),
+  onCamera: () => openCamera(),
   onAdd: () => openPicker(),
   onClear: () => askClear(),
   onUndo: () => undo(),
@@ -28,6 +29,8 @@ bootPage();
 function bootPage() {
   const picker = document.getElementById("picker");
   picker.addEventListener("change", () => { const files = picker.files; if (files && files.length) take(files); picker.value = ""; });
+  const camera = document.getElementById("camera-picker");
+  camera.addEventListener("change", () => { const files = camera.files; if (files && files.length) take(files); camera.value = ""; });
   watchDrop();
   window.addEventListener("beforeunload", (event) => { if (!session.sending) return; event.preventDefault(); event.returnValue = ""; });
   view.prepare(session.copy);
@@ -39,6 +42,11 @@ function bootPage() {
 function openPicker() {
   if (session.sending) return;
   document.getElementById("picker").click();
+}
+
+function openCamera() {
+  if (session.sending) return;
+  document.getElementById("camera-picker").click();
 }
 
 let chain = Promise.resolve();
