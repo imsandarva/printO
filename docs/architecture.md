@@ -75,19 +75,10 @@ Citizenship is two single pages on one sheet. The first file chosen sits near th
 
 The sheet on the counter is always A4, portrait, 210 by 297 millimetres, the paper in the tray. It does not grow wide or thin to match a file. The page keeps its own shape and sits in the middle of that sheet. The size slider scales the page already drawn on the sheet. The paper does not move, and the page is not drawn again while the slider moves, so it stays in step with the pointer. 100% is the normal fit: the whole page, as large as that sheet allows. The slider stops at 125% for every file. Anything past the edge of the sheet is cut off, in the preview and in the PDF that is printed, so the two match. A page that is already A4, at 100%, is still copied through unchanged. The stored file is left as it was, so a later size starts from the full page again.
 
-Rotation follows the same non-destructive rule: PDF page rotations are previewed in-place in the counter and sent as per-page quarter-turns at print time (`compose`), single photos re-render from their original bytes onto A4 via `RotationService` so sideways photos fill the sheet cleanly, and Citizenship sheets re-compose from their saved pieces while preserving fixed A4 portrait geometry.
+Each page is pictured once, about as large as the sheet on screen. Turning it, or laying the next page beside it, redraws that picture. The file is not opened again, so a large scan stays in step with the click. The first look at a page can still take a moment; the sheet says it is preparing, and only then. Pages that have scrolled away are dropped. The next page is kept ready, because that is the one a turn or a landscape sheet needs.
 
-## 2-up landscape mode
+Those choices stay a short list: which pages, how each one is turned, how large it sits, and whether two share a landscape sheet. Print turns and centers the real pages the same way, and cuts off whatever passes the edge. A single photo is the exception: it is placed again from the original picture, so a sideways photo fills the sheet instead of carrying the white around it. A Citizenship sheet is built again from its two saved pieces. The file in the queue is left as it arrived until then.
 
-The landscape button in the preview dock (beside the rotate button, keyboard shortcut **L**) switches the counter into 2-up mode: each preview card shows two consecutive PDF pages side-by-side on a single A4 landscape sheet (297 × 210 mm, aspect ratio ≈ 1.4142). The preview and the printed output match exactly.
+## Two pages on a landscape sheet
 
-**How it works (front-end only, no server change required):**
-
-- `landscape.js` owns the button, the icon, and `paintLandscapeSheet()` — a pure canvas composer that fetches both left and right PDF pages via pdf.js, renders each into its half of a landscape canvas (fitting each page to its half-width/full-height cell), and composites them with a faint divider line.
-- `sheets.js` reads `view.landscape` before every `draw()`. When true, `wanted()` returns only the left-page of each pair (pages 1, 3, 5 …), and each sheet card is sized to landscape ratio via `.is-landscape`. `setLandscapeMode(on)` is the exported toggle that rebuilds the pool.
-- `applyLandscapeStage()` updates `--sheet` on the frame element and `aspect-ratio` inline on the stage element so the visible preview paper switches shape smoothly.
-- `app.js` stores `draft.landscape` per job, calls `handleLandscape()` on toggle, and sends `landscape: true` in the print payload when active.
-- `rotate.js` / `syncRotateDock()` passes `landscape` to `syncLandscapeButton()` so the button lights up with an amber accent when 2-up is on.
-- The print backend receives `landscape: true` in the POST body. It should produce a landscape PDF with two pages side-by-side per sheet (this is the backend integration point to implement when ready).
-
-Page selection and rotation are automatically cleared when switching modes, since per-page granularity does not map to the paired layout.
+The landscape button beside rotate (keyboard **L**) puts two consecutive pages on one A4 landscape sheet, 297 by 210 millimetres. Each page keeps its own shape and sits in its half, with a faint line between them. The pictures already on screen are reused, so the sheet changes with the click. The print request includes this choice. Laying the two pages out on paper the same way is still to be finished. Switching into this layout clears a selected page, because one sheet is no longer one page.
