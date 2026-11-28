@@ -1,6 +1,7 @@
-/* Landscape 2-up mode: two portrait pages side-by-side on one A4 landscape sheet.
-   This module owns the button, the preview rendering, and the state flag.
-   It is a sibling of rotate.js — same dock, right beside the rotate button. */
+/* Landscape 2-up: two chosen pages side by side on one A4 landscape sheet.
+   Each picture keeps its shape and sits in its own half. The print uses the same
+   halves (148.5 by 210 millimetres), defined in domain/layout.py.
+   A half with no picture yet stays empty. Nothing is stretched to fill it. */
 
 import { el } from "./dom.js";
 import { landscapeIcon } from "./icons.js";
@@ -37,11 +38,11 @@ export function syncLandscapeButton(btn, state) {
 /* Two pictures already drawn, placed side by side. Nothing is rendered from the file here. */
 
 export function paintLandscapeSheet(canvas, frame, left, right, leftRot, rightRot) {
-  if (!canvas || !frame || !left) return;
+  if (!canvas || !frame || (!left && !right)) return;
   const ctx = prepareSheet(canvas, frame);
   const halfW = frame.width / 2;
   const cell = { width: halfW, height: frame.height };
-  blitPage(ctx, { ...cell, x: 0, y: 0 }, left, leftRot);
+  if (left) blitPage(ctx, { ...cell, x: 0, y: 0 }, left, leftRot);
   if (right) blitPage(ctx, { ...cell, x: halfW, y: 0 }, right, rightRot);
   ctx.strokeStyle = "rgba(26,23,20,0.08)";
   ctx.lineWidth = 0.5;

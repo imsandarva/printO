@@ -20,6 +20,7 @@ class PrintBody(BaseModel):
     copies: int = 1
     fit: int = 100
     rotations: dict[str, int] | None = None
+    landscape: bool = False
 
 
 class PairBody(BaseModel):
@@ -85,7 +86,7 @@ async def rotate_job(request: Request, job_id: str, body: RotateBody) -> object:
 
 @router.post("/jobs/{job_id}/print")
 async def print_job(request: Request, job_id: str, body: PrintBody) -> object:
-    job = await request.app.state.ctx.printing.print_job(job_id, body.pages, body.copies, body.fit, body.rotations)
+    job = await request.app.state.ctx.printing.print_job(job_id, body.pages, body.copies, body.fit, body.rotations, body.landscape)
     return succeed({"job": present(job)})
 
 

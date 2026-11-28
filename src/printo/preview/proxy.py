@@ -50,10 +50,12 @@ class ProxyDesk:
             out["angle"] = body["angle"]
         return out
 
-    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None) -> dict:
+    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None, landscape: bool = False) -> dict:
         payload: dict = {"pages": pages, "copies": copies, "fit": fit}
         if rotations:
             payload["rotations"] = rotations
+        if landscape:
+            payload["landscape"] = True
         return _json(self, "POST", f"jobs/{job_id}/print", payload)["job"]
 
     def citizenship(self, ids: list[str]) -> dict:

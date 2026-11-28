@@ -106,7 +106,7 @@ class Scene:
                 return {"job": present(job), "angle": angle}
         raise UserError(validation())
 
-    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None) -> dict:
+    def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None, landscape: bool = False) -> dict:
         parse_fit(fit)
         with self._lock:
             job = self._get(job_id)
@@ -117,7 +117,7 @@ class Scene:
             if not can_print(job):
                 raise UserError(not_ready(), 409)
             parse_rotations(rotations, job.page_count or 0)
-            selection(pages or "all", job.page_count or 0, copies, self._copies, self._sheets)
+            selection(pages or "all", job.page_count or 0, copies, self._copies, self._sheets, landscape=bool(landscape))
             spec = (pages or "all").strip() or "all"
             updated = _with(job, status=PRINTING, failure_stage=None, pages_spec=spec, copies=copies, message=printing())
             self._save(updated)

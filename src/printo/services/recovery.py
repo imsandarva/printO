@@ -39,7 +39,7 @@ def recover(shop: Shop) -> None:
             # A sheet might be in the printer after a power cut. Never guess and start another one.
             saved = shop.jobs.transition(
                 job.id, expect={status}, status=STOPPED, cups_job_id=None, print_reprint_last=False,
-                message=stopped_at(job.print_done, job.print_total or 0),
+                message=stopped_at(job.print_done, job.print_total or 0, sheet=shop.files.sheet_count(job.id) is not None),
             )
             if saved is not None:
                 shop.events.publish_job(saved)

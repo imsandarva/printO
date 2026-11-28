@@ -1,9 +1,10 @@
 """Build the exact PDF the printer should receive: the chosen pages, repeated once per copy.
 
-The sheet is always A4, portrait, the paper in the tray. A page keeps its own shape and sits
-in the middle of that sheet. Anything past the edge is cut off. The MF3010's collate setting
-defaults to Group, so asking CUPS for copies would print every copy of page 1 before page 2.
-Repeating the pages here keeps a 3-page letter in order, for each copy.
+Portrait is one page on A4. Landscape is two chosen pages on one A4 sheet turned sideways.
+A page keeps its own shape and is centred. Anything past the edge is cut off. The numbers
+live in domain/layout.py, which is also what the preview follows. The MF3010's collate
+setting defaults to Group, so asking CUPS for copies would print every copy of page 1
+before page 2. Repeating the sheets here keeps each copy in order.
 """
 
 from pathlib import Path
@@ -11,29 +12,40 @@ from pathlib import Path
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf.generic import DecodedStreamObject, NameObject
 
+from printo.domain.layout import (
+    A4_HEIGHT,
+    A4_WIDTH,
+    LANDSCAPE_HEIGHT,
+    LANDSCAPE_WIDTH,
+    RULE_GRAY,
+    RULE_INSET,
+    RULE_WIDTH,
+    pairs,
+    place_in_half,
+)
 from printo.storage.atomic import replace
 
-# 210mm by 297mm, in PDF points. One point is 1/72 inch.
-_MM = 72 / 25.4
-A4_WIDTH = 210 * _MM
-A4_HEIGHT = 297 * _MM
 # Word processors and photos round A4 by a point or two. Close enough to leave the page alone.
 _SLOP = 2.0
 
 
-def compose(source: Path, dest: Path, indexes: list[int], copies: int, fit: int = 100, rotations: dict[int, int] | None = None) -> int:
+def compose(source: Path, dest: Path, indexes: list[int], copies: int, fit: int = 100, rotations: dict[int, int] | None = None, landscape: bool = False) -> int:
     reader = PdfReader(str(source), strict=False)
     if reader.is_encrypted:
         reader.decrypt("")
     writer = PdfWriter()
     extra = rotations or {}
+    if landscape:
+        count = _place_landscape(writer, reader, indexes, copies, fit / 100, extra)
     # 100% on an upright page that is already A4 is copied through, so embedded fonts stay as they are.
-    if fit == 100 and all(extra.get(index, 0) % 360 == 0 and _is_a4(reader.pages[index]) for index in indexes):
+    elif fit == 100 and all(extra.get(index, 0) % 360 == 0 and _is_a4(reader.pages[index]) for index in indexes):
         _copy(writer, reader, indexes, copies)
+        count = len(indexes) * copies
     else:
         _place(writer, reader, indexes, copies, fit / 100, extra)
+        count = len(indexes) * copies
     _save(writer, dest)
-    return len(indexes) * copies
+    return count
 
 
 def _copy(writer: PdfWriter, reader: PdfReader, indexes: list[int], copies: int) -> None:
@@ -46,6 +58,41 @@ def _place(writer: PdfWriter, reader: PdfReader, indexes: list[int], copies: int
     for _ in range(copies):
         for index in indexes:
             center_on_a4(writer, ready[index], factor)
+
+
+def _place_landscape(writer: PdfWriter, reader: PdfReader, indexes: list[int], copies: int, factor: float, rotations: dict[int, int]) -> int:
+    ready = {index: upright_page(reader.pages[index], writer, rotations.get(index, 0)) for index in indexes}
+    grouped = pairs(indexes)
+    for _ in range(copies):
+        for left, right in grouped:
+            sheet = writer.add_blank_page(width=LANDSCAPE_WIDTH, height=LANDSCAPE_HEIGHT)
+            _stamp_half(sheet, ready[left], 0, factor)
+            if right is not None:
+                _stamp_half(sheet, ready[right], 1, factor)
+            _divider(sheet)
+            clip_sheet(sheet)
+    return len(grouped) * copies
+
+
+def _stamp_half(sheet, page, side: int, factor: float) -> None:
+    box = page.mediabox
+    left, bottom = float(box.left), float(box.bottom)
+    width, height = max(float(box.width), 1.0), max(float(box.height), 1.0)
+    scale, tx, ty = place_in_half(width, height, left, bottom, side, factor)
+    sheet.merge_transformed_page(page, Transformation().scale(scale).translate(tx, ty), expand=False)
+
+
+def _divider(page) -> None:
+    # The same faint centre line the preview draws. It stays put when the sheet is scaled.
+    contents = page.get_contents()
+    reference = page.indirect_reference
+    if contents is None or reference is None:
+        return
+    x = LANDSCAPE_WIDTH / 2
+    line = f"q {RULE_GRAY:.4f} G {RULE_WIDTH:.2f} w {x:.4f} {RULE_INSET:.4f} m {x:.4f} {LANDSCAPE_HEIGHT - RULE_INSET:.4f} l S Q\n".encode()
+    stream = DecodedStreamObject()
+    stream.set_data(contents.get_data() + line)
+    page[NameObject("/Contents")] = reference.pdf._add_object(stream)
 
 
 def _is_a4(page) -> bool:

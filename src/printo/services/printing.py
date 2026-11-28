@@ -6,6 +6,7 @@ import shutil
 from printo.config import Settings
 from printo.domain.fit import parse_fit
 from printo.domain.job import Job
+from printo.domain.layout import sheet_count
 from printo.domain.pages import selection
 from printo.domain.rotate import parse_rotations
 from printo.domain.status import DONE, FAILED, READY, STOPPED, WAITING, can_print
@@ -14,7 +15,7 @@ from printo.messages import already_printing, compose_failed, in_trash, not_foun
 from printo.printing.compose import compose
 from printo.printing.cups import PrinterPort, refuse_reason
 from printo.printing.runner import PrintRunner
-from printo.printing.split import split_pages
+from printo.printing.split import split_pages, split_sheets
 from printo.services.events import Events
 from printo.storage.files import Files
 from printo.storage.jobs import JobStore
@@ -29,8 +30,8 @@ class PrintService:
         self.events = events
         self.runner = runner
 
-    async def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None) -> Job:
-        job = await asyncio.to_thread(self._stage, job_id, pages, copies, fit, rotations)
+    async def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None, landscape: bool = False) -> Job:
+        job = await asyncio.to_thread(self._stage, job_id, pages, copies, fit, rotations, landscape)
         self.events.publish_job(job)
         self.runner.wake()
         return job
@@ -55,17 +56,19 @@ class PrintService:
         self.events.publish_job(job)
         return job
 
-    def _stage(self, job_id: str, pages: str, copies: int, fit: int, rotations: dict | None) -> Job:
+    def _stage(self, job_id: str, pages: str, copies: int, fit: int, rotations: dict | None, landscape: bool = False) -> Job:
         amount = parse_fit(fit)
         job = self._ready(job_id)
         turned = parse_rotations(rotations, job.page_count or 0)
-        indexes = selection(pages, job.page_count or 0, copies, self.settings.max_copies, self.settings.max_sheets)
+        wide = bool(landscape)
+        indexes = selection(pages, job.page_count or 0, copies, self.settings.max_copies, self.settings.max_sheets, landscape=wide)
         reason = refuse_reason(self.cups.status())
         if reason:
             raise UserError(reason, 409)
-        locked = self._lock(job, pages, copies, len(indexes) * copies)
+        units = sheet_count(len(indexes)) if wide else len(indexes)
+        locked = self._lock(job, pages, copies, units * copies)
         try:
-            self._write(locked, indexes, copies, amount, turned)
+            self._write(locked, indexes, copies, amount, turned, wide)
         except UserError:
             self._fail(locked.id)
             raise
@@ -96,10 +99,14 @@ class PrintService:
             raise UserError(already_printing(), 409)
         return locked
 
-    def _write(self, job: Job, indexes: list[int], copies: int, fit: int, rotations: dict[int, int]) -> None:
+    def _write(self, job: Job, indexes: list[int], copies: int, fit: int, rotations: dict[int, int], landscape: bool) -> None:
         destination = self.files.to_print(job.id)
-        compose(self.files.document(job.id), destination, indexes, copies, fit, rotations=rotations)
-        split_pages(destination, self.files.print_pages(job.id), indexes)
+        compose(self.files.document(job.id), destination, indexes, copies, fit, rotations=rotations, landscape=landscape)
+        folder = self.files.print_pages(job.id)
+        if landscape:
+            split_sheets(destination, folder, sheet_count(len(indexes)))
+        else:
+            split_pages(destination, folder, indexes)
 
     def _fail(self, job_id: str) -> None:
         failed = self.jobs.transition(

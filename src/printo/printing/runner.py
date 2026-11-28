@@ -58,9 +58,9 @@ class PrintRunner:
             raise UserError(in_trash(), 409)
         total = job.print_total or 0
         if job.status == WAITING:
-            saved = self.jobs.transition(job.id, expect={WAITING}, status=STOPPED, message=stopped_at(job.print_done, total), cups_job_id=None)
+            saved = self.jobs.transition(job.id, expect={WAITING}, status=STOPPED, message=stopped_at(job.print_done, total, sheet=self._sheets(job)), cups_job_id=None)
         elif job.status == PRINTING:
-            saved = self.jobs.transition(job.id, expect={PRINTING}, status=STOPPING, message=stopping())
+            saved = self.jobs.transition(job.id, expect={PRINTING}, status=STOPPING, message=stopping(sheet=self._sheets(job)))
         elif job.status in {STOPPING, STOPPED}:
             saved = job
         else:
@@ -90,7 +90,7 @@ class PrintRunner:
             if job is None or job.status not in {PRINTING, STOPPING}:
                 return
             if job.status == STOPPING and not job.cups_job_id:
-                paused = await asyncio.to_thread(self._pause, job, stopped_at(job.print_done, job.print_total or 0))
+                paused = await asyncio.to_thread(self._pause, job, stopped_at(job.print_done, job.print_total or 0, sheet=self._sheets(job)))
                 if paused:
                     self.events.publish_job(paused)
                 return
@@ -105,8 +105,8 @@ class PrintRunner:
                 total = job.print_total or 0
                 settled = await asyncio.to_thread(
                     self.jobs.complete_page, job.id,
-                    next_message=printing_page(job.print_done + 2, total),
-                    stopped_message=stopped_at(job.print_done + 1, total), done_message="Sent to the printer.",
+                    next_message=printing_page(job.print_done + 2, total, sheet=self._sheets(job)),
+                    stopped_message=stopped_at(job.print_done + 1, total, sheet=self._sheets(job)), done_message="Sent to the printer.",
                 )
                 if settled:
                     self.events.publish_job(settled)
@@ -130,7 +130,7 @@ class PrintRunner:
             return None
         return self.jobs.transition(
             job.id, expect={WAITING}, status=PRINTING,
-            message=printing_page(job.print_done + 1, job.print_total), cups_job_id=None,
+            message=printing_page(job.print_done + 1, job.print_total, sheet=self._sheets(job)), cups_job_id=None,
         )
 
     async def _submit(self, job) -> bool:
@@ -167,6 +167,10 @@ class PrintRunner:
         return True
 
     def _page_path(self, job):
+        sheets = self.files.sheet_count(job.id)
+        if sheets:
+            page = self.files.print_page(job.id, job.print_done % sheets)
+            return page if page.is_file() else None
         try:
             indexes = parse_pages(job.pages_spec or "all", job.page_count or 0)
         except UserError:
@@ -175,6 +179,9 @@ class PrintRunner:
             return None
         page = self.files.print_page(job.id, indexes[job.print_done % len(indexes)])
         return page if page.is_file() else None
+
+    def _sheets(self, job) -> bool:
+        return self.files.sheet_count(job.id) is not None
 
     def _printer_reason(self) -> str | None:
         return refuse_reason(self.cups.status())

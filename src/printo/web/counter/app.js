@@ -498,11 +498,8 @@ function handleLandscape(job) {
   const draft = draftOf(target);
   draft.landscape = !draft.landscape;
   draft.dirty = true;
-  /* Disable page selection when switching modes */
-  draft.selectedPage = null;
-  draft.selectedSlot = null;
   setLandscapeMode(draft.landscape);
-  updateSheetsState({ selectedPage: null, selectedSlot: null, landscape: draft.landscape });
+  updateSheetsState({ selectedPage: draft.selectedPage, selectedSlot: draft.selectedSlot, landscape: draft.landscape });
   render();
 }
 

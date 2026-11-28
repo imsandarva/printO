@@ -1,5 +1,6 @@
 """Files live under the data directory. Job ids are random, so a phone can never choose a path."""
 
+import json
 import shutil
 import uuid
 from pathlib import Path
@@ -66,6 +67,20 @@ class Files:
         if source_index < 0:
             raise ValueError("unsafe page index")
         return self.print_pages(job_id) / f"page-{source_index + 1:04d}.pdf"
+
+    def sheet_count(self, job_id: str) -> int | None:
+        """How many landscape sheets this run feeds, or nothing when each file is one page."""
+        path = self.print_pages(job_id) / "plan.json"
+        if not path.is_file():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        count = payload.get("sheets") if isinstance(payload, dict) else None
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            return None
+        return count
 
     def job_dir(self, job_id: str) -> Path:
         if not ID_RE.fullmatch(job_id or ""):

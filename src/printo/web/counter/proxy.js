@@ -16,8 +16,17 @@ export function rasterEdge(frame) {
   return Math.min(CAP, Math.max(64, Math.ceil(long * dpr)));
 }
 
-export function proxyCovers(cache, pageNum, edge) {
-  return Boolean(fresh(cache, pageNum, edge));
+/* A picture is sharp enough when it already covers the box it will be drawn into.
+   Turning the sheet sideways must not open the file again just because the box got wider. */
+export function cellNeed(frame, half) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const long = half ? Math.max((frame?.width || 0) / 2, frame?.height || 0) : Math.max(frame?.width || 0, frame?.height || 0);
+  return Math.max(1, long * dpr);
+}
+
+export function proxySharp(proxy, pixelLong) {
+  if (!proxy || proxy.closed || !proxy.width || !proxy.height) return false;
+  return Math.max(proxy.width, proxy.height) >= pixelLong * REUSE;
 }
 
 export function peekProxy(cache, pageNum) {

@@ -7,8 +7,8 @@ import * as pdfjs from "/c/pdf.min.mjs";
 import { holdPages } from "./bar.js";
 import { el } from "./dom.js";
 import { clampFit, sizeControl } from "./fit.js";
-import { paintLandscapeSheet } from "./landscape.js";
-import { clearProxies, createProxyCache, dropProxy, evictProxies, holdProxy, pageProxy, paintSheet, peekProxy, proxyCovers, quarter, rasterEdge, turnRatio } from "./proxy.js";
+import { landscapePairs, paintLandscapeSheet } from "./landscape.js";
+import { cellNeed, clearProxies, createProxyCache, dropProxy, evictProxies, holdProxy, pageProxy, paintSheet, peekProxy, proxySharp, quarter, rasterEdge, turnRatio } from "./proxy.js";
 import { createRotateDock, flickIcon, paintPairSlots, syncRotateDock } from "./rotate.js";
 
 const WORKER = "/c/pdf.worker.min.mjs";
@@ -70,21 +70,26 @@ export function updateSheetsState(next) {
   syncSelection(live);
 }
 
-/* Toggle landscape 2-up mode on the live view and redraw all sheets. */
+/* Toggle landscape 2-up. The old picture is dropped in this same turn, then the
+   pictures already on screen are laid into the new shape. A missing half stays blank. */
 export function setLandscapeMode(on) {
   if (!live || !live.open) return;
   live.landscape = Boolean(on);
-  /* Switch the stage aspect-ratio to landscape (297/210 ≈ 1.4142) or back to portrait (210/297). */
+  live.mark += 1;
+  dropVeil(live);
   applyLandscapeStage(live);
   if (live.pool) {
     for (const sheet of live.pool.values()) {
       forget(sheet);
       sheet.classList.toggle("is-landscape", live.landscape);
+      clearPicture(sheet);
     }
   }
-  live.mark += 1;
   if (live.stack) {
-    mount(live, wanted(live));
+    const numbers = wanted(live);
+    live.shown = keyOf(numbers);
+    mount(live, numbers);
+    showHeld(live);
     if (live.scroller) drawVisible(live, live.scroller, live.stack);
   }
   syncSelection(live);
@@ -275,13 +280,17 @@ function blank(view, number) {
   sheet.append(media);
   sheet.addEventListener("click", (event) => {
     if (!view.canRotate) return;
-    if (isPairView(view)) {
+    if (isPairView(view) && !view.landscape) {
       event.stopPropagation();
       view.onClearSelection?.();
       return;
     }
     event.stopPropagation();
-    view.onSelectPage?.(number);
+    if (!view.landscape) { view.onSelectPage?.(number); return; }
+    const mate = Number(sheet.dataset.mate) || 0;
+    const box = sheet.getBoundingClientRect();
+    const onRight = mate && event.clientX >= box.left + box.width / 2;
+    view.onSelectPage?.(onRight ? mate : number);
   });
   return sheet;
 }
@@ -305,12 +314,17 @@ function syncSelection(view) {
   });
   for (const sheet of view.pool.values()) {
     const pageNum = Number(sheet.dataset.page);
+    const mate = Number(sheet.dataset.mate) || 0;
     const selectable = view.canRotate && !pairActive;
+    const picked = selectable && view.selectedPage === pageNum;
+    const pickedMate = selectable && mate && view.selectedPage === mate;
     sheet.classList.toggle("is-selectable", selectable);
-    sheet.classList.toggle("is-selected", selectable && view.selectedPage === pageNum);
+    sheet.classList.toggle("is-selected", picked && !view.landscape);
+    sheet.classList.toggle("is-picked-left", Boolean(view.landscape && picked));
+    sheet.classList.toggle("is-picked-right", Boolean(view.landscape && pickedMate));
     const slots = sheet.querySelector(".pair-slots");
     if (slots) {
-      if (pairActive && view.canRotate && pageNum === 1) {
+      if (pairActive && view.canRotate && pageNum === 1 && !view.landscape) {
         paintPairSlots(slots, view.pair.boxes, view.selectedSlot, (index) => view.onSelectSlot?.(index));
       } else {
         paintPairSlots(slots, null, null, null);
@@ -344,6 +358,35 @@ function retarget(view, scroller, stack) {
 }
 
 function forget(sheet) { sheet.dataset.drawn = ""; sheet.dataset.drawing = ""; }
+
+/* Drop the bitmap before the sheet changes shape, so the old picture cannot be stretched into it. */
+function clearPicture(sheet) {
+  const canvas = sheet.querySelector(".sheet-media > canvas");
+  if (canvas) { canvas.width = 0; canvas.height = 0; delete canvas.dataset.rot; delete canvas.dataset.landscape; }
+  sheet.classList.remove("is-ready");
+  clearWait(sheet);
+}
+
+/* Lay the pictures we already have into the sheet that is on screen. No file is opened here. */
+function showHeld(view) {
+  if (!view.open || !view.stack || !view.doc) return;
+  const mark = String(view.mark);
+  for (const sheet of view.stack.children) {
+    if (!isNearViewport(view.scroller, sheet)) continue;
+    const frame = frameOf(sheet);
+    const canvas = sheet.querySelector(".sheet-media > canvas");
+    if (!frame || !canvas) continue;
+    const pageNum = Number(sheet.dataset.page);
+    const rightNum = mateOf(view, pageNum);
+    const left = peekProxy(view.cache, pageNum);
+    const right = rightNum ? peekProxy(view.cache, rightNum) : null;
+    if (!left && !right) continue;
+    stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum);
+    if (sideReady(left, frame, view.landscape) && (!rightNum || sideReady(right, frame, true))) sheet.dataset.drawn = mark;
+  }
+}
+
+function sideReady(proxy, frame, half) { return proxySharp(proxy, cellNeed(frame, half)); }
 
 function kick(view) {
   if (view.running) { view.again = true; return; }
@@ -380,16 +423,24 @@ async function settle(view) {
   fadeVeil(veil);
 }
 
-function wanted(view) {
+function sourcePages(view) {
   const count = view.doc ? view.doc.numPages : 0;
   const pages = view.pages && view.pages.length ? view.pages : every(count);
-  const valid = pages.filter((number) => number >= 1 && number <= count);
-  if (!view.landscape) return valid;
-  /* In 2-up mode each sheet shows page N (left) and N+1 (right).
-     We only need the left-page of each pair as the sheet key. */
-  const leaders = [];
-  for (let i = 0; i < valid.length; i += 2) leaders.push(valid[i]);
-  return leaders;
+  return pages.filter((number) => number >= 1 && number <= count);
+}
+
+function wanted(view) {
+  const pages = sourcePages(view);
+  if (!view.landscape) { view.mates = new Map(); return pages; }
+  /* Pair the pages that will print, in that order. Page 1 beside page 3 when only the odd ones are chosen. */
+  const pairs = landscapePairs(pages);
+  view.mates = new Map(pairs.map(([left, right]) => [left, right || 0]));
+  return pairs.map(([left]) => left);
+}
+
+function mateOf(view, pageNum) {
+  if (!view.landscape || !view.mates) return 0;
+  return view.mates.get(pageNum) || 0;
 }
 
 function every(count) {
@@ -405,6 +456,9 @@ function mount(view, numbers) {
   const frag = document.createDocumentFragment();
   for (const number of numbers) {
     const sheet = sheetFor(view, number);
+    const mate = view.landscape && view.mates ? view.mates.get(number) || 0 : 0;
+    sheet.dataset.mate = mate ? String(mate) : "";
+    sheet.classList.toggle("is-landscape", Boolean(view.landscape));
     keep.add(sheet);
     frag.append(sheet);
     view.observer?.observe(sheet);
@@ -622,32 +676,36 @@ async function swapSheet(view, sheet) {
   }
 }
 
-/* Draw from the screen picture when it exists. Open the file only the first time. */
+/* Draw from the screen picture when it exists. Open the file only for a half that has no picture yet.
+   A half that is not ready stays empty. The previous picture is never stretched into the new shape. */
 async function repaint(view, sheet, canvas, still) {
   const frame = frameOf(sheet);
   const pageNum = Number(sheet.dataset.page);
   if (!frame || !canvas || !view.doc || !still()) return false;
+  const rightNum = mateOf(view, pageNum);
+  let left = peekProxy(view.cache, pageNum);
+  let right = rightNum ? peekProxy(view.cache, rightNum) : null;
+  if (left || right) stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum);
+  const leftNeed = !sideReady(left, frame, view.landscape);
+  const rightNeed = Boolean(rightNum) && !sideReady(right, frame, true);
+  if (!leftNeed && !rightNeed) return Boolean(left);
+  if (!left && !right) expectWait(sheet);
   const edge = rasterEdge(frame);
-  const rightNum = view.landscape && pageNum < view.doc.numPages ? pageNum + 1 : 0;
-  const leftHit = proxyCovers(view.cache, pageNum, edge) ? peekProxy(view.cache, pageNum) : null;
-  const rightHit = rightNum && proxyCovers(view.cache, rightNum, edge) ? peekProxy(view.cache, rightNum) : null;
-  if (leftHit && (!rightNum || rightHit)) { stampSheet(view, sheet, canvas, frame, leftHit, rightHit, pageNum, rightNum); return true; }
-  if (!leftHit || (rightNum && !rightHit)) expectWait(sheet);
-  let left = null;
-  let right = null;
   let heldLeft = false;
   let heldRight = false;
   try {
-    left = await pageProxy(view.cache, view.doc, pageNum, edge, hooksOf(view));
-    if (!left || !still()) return false;
-    holdProxy(left);
-    heldLeft = true;
-    if (rightNum) {
+    if (leftNeed) {
+      left = await pageProxy(view.cache, view.doc, pageNum, edge, hooksOf(view));
+      if (!left || !still()) return false;
+      holdProxy(left);
+      heldLeft = true;
+    }
+    if (rightNeed && still()) {
       right = await pageProxy(view.cache, view.doc, rightNum, edge, hooksOf(view));
       if (!still()) return false;
       if (right) { holdProxy(right); heldRight = true; }
     }
-    if (!still()) return false;
+    if (!still() || (!left && !right)) return false;
     stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum);
     return true;
   } finally {
@@ -669,9 +727,17 @@ function stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum) 
 }
 
 function warm(view, pageNum, edge) {
-  const next = pageNum + 1;
-  if (!view.doc || next > view.doc.numPages || proxyCovers(view.cache, next, edge)) return;
-  pageProxy(view.cache, view.doc, next, edge, hooksOf(view)).catch(() => {});
+  const ahead = [];
+  const mate = mateOf(view, pageNum);
+  if (mate) ahead.push(mate);
+  const leaders = view.landscape && view.mates ? [...view.mates.keys()] : [];
+  const at = leaders.indexOf(pageNum);
+  if (at >= 0 && leaders[at + 1]) ahead.push(leaders[at + 1], view.mates.get(leaders[at + 1]) || 0);
+  else if (!view.landscape) ahead.push(pageNum + 1);
+  for (const next of ahead) {
+    if (!next || !view.doc || next > view.doc.numPages || peekProxy(view.cache, next)) continue;
+    pageProxy(view.cache, view.doc, next, edge, hooksOf(view)).catch(() => {});
+  }
 }
 
 function retained(view) {

@@ -140,16 +140,19 @@ def waiting_to_print() -> str:
     return "Waiting for the printer."
 
 
-def printing_page(current: int, total: int) -> str:
-    return f"Printing page {current} of {total}."
+def printing_page(current: int, total: int, *, sheet: bool = False) -> str:
+    name = "sheet" if sheet else "page"
+    return f"Printing {name} {current} of {total}."
 
 
-def stopping() -> str:
-    return "Stopping after the page in the printer finishes."
+def stopping(*, sheet: bool = False) -> str:
+    name = "sheet" if sheet else "page"
+    return f"Stopping after the {name} in the printer finishes."
 
 
-def stopped_at(done: int, total: int) -> str:
-    return f"Stopped at {done} of {total} pages."
+def stopped_at(done: int, total: int, *, sheet: bool = False) -> str:
+    name = "sheets" if sheet else "pages"
+    return f"Stopped at {done} of {total} {name}."
 
 
 def paused_for_printer(reason: str) -> str:

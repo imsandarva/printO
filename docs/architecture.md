@@ -81,4 +81,6 @@ Those choices stay a short list: which pages, how each one is turned, how large 
 
 ## Two pages on a landscape sheet
 
-The landscape button beside rotate (keyboard **L**) puts two consecutive pages on one A4 landscape sheet, 297 by 210 millimetres. Each page keeps its own shape and sits in its half, with a faint line between them. The pictures already on screen are reused, so the sheet changes with the click. The print request includes this choice. Laying the two pages out on paper the same way is still to be finished. Switching into this layout clears a selected page, because one sheet is no longer one page.
+The landscape button beside rotate (keyboard **L**) puts two chosen pages on one A4 landscape sheet, 297 by 210 millimetres. Each page keeps its own shape and sits in its half, 148.5 by 210, with a faint line between them. The pictures already on screen are reused, so the sheet changes with the click. A half that is not ready yet stays empty. A picture is never stretched to fill the new shape.
+
+Print follows the same layout (`domain/layout.py`). Chosen pages are paired in order, a turn is applied before a page is placed, and the size slider scales the whole sheet about its centre. Anything past the paper is cut off. An odd last page leaves the right half blank. Stop, the progress line, and the sheet limit count these sheets, and each copy sends those sheets again. Turning landscape on does not clear a page the shopkeeper had selected.

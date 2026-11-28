@@ -88,20 +88,21 @@ function moves(previous, choice) {
   return Boolean(previous) && previous !== choice && motionOk();
 }
 
-function tallyNode(count, live, shift) {
+function tallyNode(count, live, shift, landscape) {
   const node = el("p", {
     class: shift ? "page-tally shift" : "page-tally",
     attrs: live ? { id: "pages-tally", "aria-live": "polite", "aria-atomic": "true" } : { "aria-hidden": "true" },
   });
-  writeTally(node, count);
+  writeTally(node, count, landscape);
   return node;
 }
 
-function writeTally(node, count) {
-  node.replaceChildren(el("span", { class: "page-count", text: String(count) }), el("span", { class: "page-rest", text: tallyRest(count) }));
+function writeTally(node, count, landscape) {
+  node.replaceChildren(el("span", { class: "page-count", text: String(count) }), el("span", { class: "page-rest", text: tallyRest(count, landscape) }));
 }
 
-function tallyRest(count) {
+function tallyRest(count, landscape) {
+  if (landscape) return count === 1 ? " sheet" : " sheets";
   return count === 1 ? " page in total" : " pages in total";
 }
 
@@ -109,8 +110,8 @@ function refreshTally(draft) {
   const node = document.getElementById("pages-tally");
   if (!node) return;
   const count = printedPages(draft);
-  if (node.textContent === pagesInTotal(count)) { remember(draft, count); return; }
-  writeTally(node, count);
+  if (node.textContent === pagesInTotal(count, draft.landscape)) { remember(draft, count); return; }
+  writeTally(node, count, draft.landscape);
   remember(draft, count);
   if (!motionOk()) return;
   // Drop the class and force layout so the same line can settle again.
@@ -121,14 +122,17 @@ function refreshTally(draft) {
 
 function remember(draft, count) {
   draft.shownCount = count;
-  draft.shown = pagesInTotal(count);
+  draft.shown = pagesInTotal(count, draft.landscape);
 }
 
 function motionOk() {
   return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function printedPages(draft) { return pageNumbers(draft).length; }
+function printedPages(draft) {
+  const pages = pageNumbers(draft).length;
+  return draft.landscape ? Math.ceil(pages / 2) : pages;
+}
 
 function stepped(count, first) {
   const pages = [];
@@ -142,8 +146,8 @@ function ranged(start, end) {
   return pages;
 }
 
-function pagesInTotal(count) {
-  return String(count) + tallyRest(count);
+function pagesInTotal(count, landscape) {
+  return String(count) + tallyRest(count, landscape);
 }
 
 function choices(draft, hooks, previous, priorCount, animate) {
@@ -167,7 +171,7 @@ function choiceNote(id, draft, previous, priorCount, animate) {
   const live = mode === "open" || mode === "arrive";
   const slot = el("div", { class: open ? "page-note open" : "page-note", attrs: live ? null : { "aria-hidden": "true" } });
   const clip = el("div", { class: "page-note-clip" });
-  if (mode !== "shut") clip.append(tallyNode(noteCount(mode, draft, priorCount), live, mode === "open" && countChanged(priorCount, draft)));
+  if (mode !== "shut") clip.append(tallyNode(noteCount(mode, draft, priorCount), live, mode === "open" && countChanged(priorCount, draft), draft.landscape));
   slot.append(clip);
   return slot;
 }
@@ -261,8 +265,8 @@ function range(draft, hooks, previous, priorCount, animate) {
   const row = el("div", { class: "page-range" });
   row.append(bound(draft, hooks, "from", "From", "page-from"), bound(draft, hooks, "to", "To", "page-to"));
   clip.append(row);
-  if (draft.choice === "custom") clip.append(tallyNode(printedPages(draft), true, !animate && countChanged(priorCount, draft)));
-  else if (closing) clip.append(tallyNode(priorCount != null ? priorCount : printedPages(draft), false, false));
+  if (draft.choice === "custom") clip.append(tallyNode(printedPages(draft), true, !animate && countChanged(priorCount, draft), draft.landscape));
+  else if (closing) clip.append(tallyNode(priorCount != null ? priorCount : printedPages(draft), false, false, draft.landscape));
   span.append(clip);
   return span;
 }

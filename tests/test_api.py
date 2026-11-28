@@ -1,10 +1,12 @@
 import time
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, NameObject
 
+from printo.domain.layout import LANDSCAPE_HEIGHT, LANDSCAPE_WIDTH
 from printo.printing.compose import A4_HEIGHT, A4_WIDTH
 from tests.support import FakeCups, jpeg_bytes, marked_pdf, pdf_bytes, running
 
@@ -75,6 +77,32 @@ def test_fit_is_printed_and_out_of_range_is_refused(tmp_path):
         assert float(page.mediabox.width) == pytest.approx(A4_WIDTH)
         assert float(page.mediabox.height) == pytest.approx(A4_HEIGHT)
         assert b"cm" in page.get_contents().get_data()
+
+
+def test_landscape_prints_sheets_not_source_pages(tmp_path):
+    cups = FakeCups()
+    cups.hold = True
+    with running(tmp_path, cups=cups) as (client, ctx, cups):
+        assert _upload(client, "notes.pdf", pdf_bytes((200, 300, 400))).status_code == 201
+        job = _wait(client, "notes.pdf", {"ready"})
+        printed = client.post(f"/admin/jobs/{job['id']}/print", json={"pages": "all", "copies": 2, "landscape": True, "rotations": {"2": 90}})
+        assert printed.status_code == 200
+        assert printed.json()["job"]["print_total"] == 4
+        printing = _wait(client, "notes.pdf", {"printing"})
+        assert printing["message"] == "Printing sheet 1 of 4."
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not cups.submitted:
+            time.sleep(0.02)
+        assert cups.submitted
+        cups.hold = False
+        cups.jobs[cups.submitted[0][2]] = "completed"
+        done = _wait(client, "notes.pdf", {"done"})
+        assert done["print_done"] == 4
+        saved = PdfReader(str(ctx.files.to_print(job["id"])))
+        assert len(saved.pages) == 4
+        assert float(saved.pages[0].mediabox.width) == pytest.approx(LANDSCAPE_WIDTH)
+        assert float(saved.pages[0].mediabox.height) == pytest.approx(LANDSCAPE_HEIGHT)
+        assert [Path(item[0]).name for item in cups.submitted] == ["page-0001.pdf", "page-0002.pdf", "page-0001.pdf", "page-0002.pdf"]
 
 
 def test_printer_off_does_not_submit(tmp_path):

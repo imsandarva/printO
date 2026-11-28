@@ -1,13 +1,16 @@
 """Turn a page request like ``1-3, 5`` into zero-based page indexes, in the order to print."""
 
+from printo.domain.layout import sheet_count
 from printo.errors import UserError
 from printo.messages import bad_copies, bad_pages, too_many_sheets
 
 
-def selection(spec: str, page_count: int, copies: int, max_copies: int, max_sheets: int) -> list[int]:
+def selection(spec: str, page_count: int, copies: int, max_copies: int, max_sheets: int, landscape: bool = False) -> list[int]:
     copies = _copies(copies, max_copies)
     indexes = parse_pages(spec, page_count)
-    if len(indexes) * copies > max_sheets:
+    # Landscape prints two chosen pages on each sheet, so the limit counts those sheets.
+    units = sheet_count(len(indexes)) if landscape else len(indexes)
+    if units * copies > max_sheets:
         raise UserError(too_many_sheets())
     return indexes
 
