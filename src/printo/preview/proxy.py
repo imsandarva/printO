@@ -37,6 +37,14 @@ class ProxyDesk:
     def file(self, job_id: str) -> bytes:
         return _bytes(self, "GET", f"jobs/{job_id}/file")
 
+    def preview_status(self, job_id: str) -> dict:
+        body = _json(self, "GET", f"jobs/{job_id}/previews")
+        return {"total": body.get("total", 0), "ready": body.get("ready", 0), "revision": body.get("revision", "")}
+
+    def preview_image(self, job_id: str, page: int, revision: str) -> bytes:
+        query = urllib.parse.urlencode({"v": revision})
+        return _bytes(self, "GET", f"jobs/{job_id}/previews/{page}?{query}")
+
     def pair_meta(self, job_id: str) -> dict:
         body = _json(self, "GET", f"jobs/{job_id}/pair")
         return {"pair": body.get("pair"), "angle": body.get("angle", 0)}

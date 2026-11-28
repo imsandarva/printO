@@ -28,11 +28,11 @@ def test_counter_opens_with_sample_files():
         assert bar[0] == 200 and b"holdPages" in bar[2]
         sheets = _open(preview.url.replace("/admin/", "/admin/c/sheets.js"))
         assert sheets[0] == 200 and b"showSheets" in sheets[2] and b"iframe" not in sheets[2]
+        assert b"getDocument" not in sheets[2] and b"Preparing this page" not in sheets[2]
         rotate_mod = _open(preview.url.replace("/admin/", "/admin/c/rotate.js"))
         assert rotate_mod[0] == 200 and b"createRotateDock" in rotate_mod[2]
-        viewer = _open(preview.url.replace("/admin/", "/c/pdf.min.mjs"))
-        assert viewer[0] == 200 and b"getDocument" in viewer[2]
-        assert _open(preview.url.replace("/admin/", "/c/pdf.worker.min.mjs"))[0] == 200
+        assert _open(preview.url.replace("/admin/", "/c/pdf.min.mjs"))[0] == 404
+        assert _open(preview.url.replace("/admin/", "/c/pdf.worker.min.mjs"))[0] == 404
         dates = _open(preview.url.replace("/admin/", "/admin/c/dates.js"))
         assert dates[0] == 200 and b"Today" in dates[2]
         assert _open(preview.url.replace("/admin/", "/"))[0] == 404
@@ -55,6 +55,11 @@ def test_counter_opens_with_sample_files():
         assert _wait(preview, ready["id"])["status"] == "done"
         pdf = _open(f"{preview.url}jobs/{ready['id']}/file")
         assert pdf[2].startswith(b"%PDF") and b"/Count 4" in pdf[2]
+        pics = _json(_open(f"{preview.url}jobs/{ready['id']}/previews"))
+        assert pics["ok"] is True and pics["total"] == 4 and pics["ready"] == 4 and pics["revision"]
+        image = _open(f"{preview.url}jobs/{ready['id']}/previews/1?v={pics['revision']}")
+        assert image[0] == 200 and image[2].startswith(b"\xff\xd8") and "immutable" in image[1]["Cache-Control"]
+        assert _open(f"{preview.url}jobs/{ready['id']}/previews/1?v=not-a-picture")[0] == 404
         busy = next(job for job in jobs["jobs"] if job["status"] == "printing")
         again = _json(_open(f"{preview.url}jobs/{busy['id']}/print", {"pages": "all", "copies": 1}))
         assert again["ok"] is False

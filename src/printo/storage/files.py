@@ -1,11 +1,15 @@
 """Files live under the data directory. Job ids are random, so a phone can never choose a path."""
 
 import json
+import re
 import shutil
 import uuid
 from pathlib import Path
 
 from printo.domain.job import ID_RE, Job
+
+# A picture revision is a short hex token, or size and time joined by one dash. Never a path.
+_REVISION = re.compile(r"^[0-9a-f]{1,32}(?:-[0-9a-f]{1,32})?$")
 from printo.domain.kinds import EXTENSIONS
 from printo.storage.atomic import replace
 
@@ -47,6 +51,20 @@ class Files:
 
     def document(self, job_id: str) -> Path:
         return self.job_dir(job_id) / "document.pdf"
+
+    def preview_root(self, job_id: str) -> Path:
+        return self.job_dir(job_id) / "previews"
+
+    def preview_image(self, job_id: str, revision: str, page: int) -> Path:
+        # The revision and the page are part of the path, so both are checked before joining.
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1 or page > 4000 or not _REVISION.fullmatch(revision or ""):
+            raise ValueError("unsafe preview")
+        root = self.preview_root(job_id).resolve()
+        folder = (root / revision).resolve()
+        path = (folder / f"{page:04d}.jpg").resolve()
+        if folder.parent != root or path.parent != folder:
+            raise ValueError("unsafe preview")
+        return path
 
     def pair_meta(self, job_id: str) -> Path:
         return self.job_dir(job_id) / "pair.json"

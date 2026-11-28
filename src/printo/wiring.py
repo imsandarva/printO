@@ -6,6 +6,7 @@ from printo.clock import Clock, SystemClock
 from printo.config import Settings
 from printo.convert.office import Office
 from printo.convert.worker import Converter
+from printo.pictures.maker import PictureMaker
 from printo.printing.cups import Cups, PrinterPort
 from printo.printing.runner import PrintRunner
 from printo.services.citizenship import Citizenship
@@ -38,6 +39,7 @@ class Context:
     citizenship: Citizenship
     rotation: RotationService
     limits: Limits
+    pictures: PictureMaker
 
 
 def build_context(settings: Settings, cups: PrinterPort | None = None, clock: Clock | None = None) -> Context:
@@ -48,16 +50,17 @@ def build_context(settings: Settings, cups: PrinterPort | None = None, clock: Cl
     jobs = JobStore(db, clock)
     events = Events(settings.sse_heartbeat_seconds)
     office = Office(settings.soffice_bin, settings.office_timeout_seconds)
-    converter = Converter(settings, jobs, files, events, office)
+    pictures = PictureMaker(files)
+    converter = Converter(settings, jobs, files, events, office, pictures)
     printer = cups or Cups(settings.printer)
     runner = PrintRunner(settings, jobs, files, printer, events)
     limits = Limits(settings, files)
     return Context(
         settings=settings, clock=clock, db=db, jobs=jobs, files=files, events=events, cups=printer, office=office,
-        converter=converter, runner=runner, limits=limits,
+        converter=converter, runner=runner, limits=limits, pictures=pictures,
         printing=PrintService(settings, jobs, files, printer, events, runner),
         trash=Trash(jobs, files, runner, events, converter),
         ingest=Ingest(settings, jobs, files, limits, converter, events),
-        citizenship=Citizenship(jobs, files, events),
-        rotation=RotationService(jobs, files),
+        citizenship=Citizenship(jobs, files, events, pictures),
+        rotation=RotationService(jobs, files, pictures),
     )

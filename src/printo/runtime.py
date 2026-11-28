@@ -22,6 +22,7 @@ async def start(ctx: Context) -> None:
     ctx.files.ensure()
     ctx.files.drop_partials()
     ctx.events.bind(asyncio.get_running_loop())
+    ctx.pictures.start()
     ctx.converter.start()
     ctx.runner.start()
     recover(ctx)
@@ -32,6 +33,7 @@ async def start(ctx: Context) -> None:
 async def stop(ctx: Context) -> None:
     await ctx.runner.stop()
     await ctx.converter.stop()
+    ctx.pictures.stop()
     ctx.db.close()
 
 

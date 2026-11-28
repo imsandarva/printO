@@ -1,5 +1,6 @@
 """Sample files for the counter. Clicks change this list only; the printer is never asked."""
 
+import hashlib
 import re
 import threading
 import uuid
@@ -19,6 +20,7 @@ from printo.messages import (
     citizenship_choose, citizenship_pages, citizenship_same, citizenship_wait, printing, ready, rejected, removed,
     removed_but_printer, removed_event, sent, still_kept, trashed, trashed_but_printer, validation,
 )
+from printo.pictures.raster import BLANK_JPEG, render_bytes
 from printo.preview.paper import pair_sheet, sheet
 
 _PAIR_NAME = re.compile(r"^Citizenship_(\d+)\.pdf$")
@@ -37,6 +39,9 @@ class Scene:
         self._pairs: dict[str, dict] = {}
         self._image_angles: dict[str, int] = {}
         self._files: dict[str, bytes] = {}
+        self._pictures: dict[tuple[str, str, int], bytes] = {}
+        self._pictured: set[tuple[str, str]] = set()
+        self._pic_lock = threading.Lock()
 
     def close(self) -> None:
         with self._lock:
@@ -53,6 +58,28 @@ class Scene:
     def one(self, job_id: str) -> dict:
         with self._lock:
             return present(self._get(job_id))
+
+    def preview_status(self, job_id: str) -> dict:
+        with self._lock:
+            job = self._get(job_id)
+            count = job.page_count or 0
+            custom = self._files.get(job_id)
+        if count < 1:
+            raise UserError(not_found(), 404)
+        data = custom if custom is not None else sheet(count)
+        revision = hashlib.sha256(data).hexdigest()[:16]
+        self._ensure_pictures(job_id, revision, data, count)
+        return {"total": count, "ready": count, "revision": revision}
+
+    def preview_image(self, job_id: str, page: int, revision: str) -> bytes:
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+            raise UserError(not_found(), 404)
+        self.preview_status(job_id)
+        with self._pic_lock:
+            found = self._pictures.get((job_id, revision, page))
+        if not found:
+            raise UserError(not_found(), 404)
+        return found
 
     def file(self, job_id: str) -> bytes:
         with self._lock:
@@ -97,14 +124,19 @@ class Scene:
                 updated = {"rotations": rotations, "sheet": cur_sheet, "boxes": boxes}
                 self._pairs[job_id] = updated
                 self._files[job_id] = pdf_bytes
-                return {"job": present(job), "pair": updated}
-            if target == "image" and job.kind == IMAGE and job.page_count == 1:
+                outcome = {"job": present(job), "pair": updated}
+            elif target == "image" and job.kind == IMAGE and job.page_count == 1:
                 raw = payload.get("angle")
                 angle = (self._image_angles.get(job_id, 0) + 90) % 360 if raw is None else parse_angle(raw)
                 self._image_angles[job_id] = angle
                 self._files[job_id] = sheet(1, rotate=angle)
-                return {"job": present(job), "angle": angle}
-        raise UserError(validation())
+                outcome = {"job": present(job), "angle": angle}
+            else:
+                outcome = None
+        if outcome is None:
+            raise UserError(validation())
+        outcome["preview"] = self.preview_status(job_id)
+        return outcome
 
     def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None, landscape: bool = False) -> dict:
         parse_fit(fit)
@@ -238,6 +270,20 @@ class Scene:
 
     def _find(self, job_id: str) -> Job | None:
         return next((job for job in self._jobs if job.id == job_id), None)
+
+    def _ensure_pictures(self, job_id: str, revision: str, data: bytes, count: int) -> None:
+        with self._pic_lock:
+            if (job_id, revision) in self._pictured:
+                return
+            made: dict[int, bytes] = {}
+            for page in range(1, count + 1):
+                try:
+                    made[page] = render_bytes(data, page)
+                except Exception:
+                    made[page] = BLANK_JPEG
+            for page, blob in made.items():
+                self._pictures[(job_id, revision, page)] = blob
+            self._pictured.add((job_id, revision))
 
     def _next_pair_name(self) -> str:
         highest = 0

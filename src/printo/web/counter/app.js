@@ -8,7 +8,7 @@ import { clampFit } from "./fit.js";
 import { trashIcon } from "./icons.js";
 import { clampPage, pageNumbers, paintPages, readPages, writePages } from "./pages.js";
 import { paintQueue, setOpen, writeBorn } from "./queue.js";
-import { closeSheets, focusSheets, pulseRotateButton, replaceSheetsDocument, rotateSheetsInPlace, setLandscapeMode, showSheets, updateSheetsState } from "./sheets.js";
+import { adoptPreview, closeSheets, focusSheets, pulseRotateButton, rotateSheetsInPlace, setLandscapeMode, showSheets, updateSheetsState } from "./sheets.js";
 import { paintAsk, paintBin } from "./trash.js";
 
 const DEFAULT_COPY_LIMIT = 100;
@@ -18,7 +18,6 @@ const state = {
   fresh: new Map(),
   folds: { shut: new Set(), forced: new Set() },
   drafts: {},
-  previews: {},
   selected: null,
   view: "files",
   trash: [],
@@ -149,7 +148,6 @@ function dropLocal(id) {
 let stopName = () => {};
 
 function forget(id) {
-  delete state.previews[id];
   delete state.drafts[id];
   state.fresh.delete(id);
   if (state.born && state.born.id === id) { stopName(); state.born = null; }
@@ -364,46 +362,36 @@ function resetPaper() {
 async function showPreview(job) {
   const slot = document.getElementById("paper");
   const draft = draftOf(job);
-  const cached = state.previews[job.id];
-  if (cached) {
-    if (cached.pair && !draft.pair) draft.pair = clonePair(cached.pair);
-    if (cached.angle != null) draft.imageAngle = cached.angle;
-    showSheets(slot, job.id, cached.bytes, previewCopy(job));
-    return;
-  }
   try {
     const needMeta = isPairName(job.name) || (job.kind === "image" && job.page_count === 1);
-    const [fileRes, metaRes] = await Promise.all([
-      fetch("/admin/jobs/" + job.id + "/file"),
+    const [statusRes, metaRes] = await Promise.all([
+      fetch("/admin/jobs/" + job.id + "/previews"),
       needMeta ? fetch("/admin/jobs/" + job.id + "/pair").catch(() => null) : Promise.resolve(null),
     ]);
-    if (!fileRes.ok || state.selected !== job.id) return;
-    const bytes = new Uint8Array(await fileRes.arrayBuffer());
-    let pair = null;
-    let angle = 0;
+    if (!statusRes.ok || state.selected !== job.id) return;
+    const status = await statusRes.json().catch(() => null);
+    if (!status || !status.ok || state.selected !== job.id) return;
     if (metaRes && metaRes.ok) {
       const meta = await metaRes.json().catch(() => null);
-      if (meta && meta.ok) { pair = meta.pair || null; angle = Number(meta.angle || 0); }
+      if (meta && meta.ok) { draft.pair = meta.pair ? clonePair(meta.pair) : null; draft.imageAngle = Number(meta.angle || 0); }
     }
     if (state.selected !== job.id) return;
-    draft.pair = pair ? clonePair(pair) : null;
-    draft.imageAngle = angle;
-    for (const id of Object.keys(state.previews)) delete state.previews[id];
-    state.previews[job.id] = { bytes, pair: draft.pair ? clonePair(draft.pair) : null, angle };
-    showSheets(slot, job.id, bytes, previewCopy(job));
+    showSheets(slot, job.id, previewCopy(job, status));
   } catch {
-    if (slot && state.selected === job.id) slot.replaceChildren(el("p", { class: "quiet", text: previewCopy(job).fail }));
+    if (slot && state.selected === job.id) slot.replaceChildren(el("p", { class: "quiet", text: "The pages aren't ready to look at yet." }));
   }
 }
 
-function previewCopy(job) {
+function previewCopy(job, preview) {
   const fail = "The pages aren't ready to look at yet.";
   const pages = previewPages(job);
-  if (state.view === "trash") return { caption: "", fail, pages, canRotate: false };
+  if (state.view === "trash") return { caption: "", fail, pages, canRotate: false, pageCount: job.page_count || 1, preview: preview || null };
   const draft = draftOf(job);
   return {
     caption: "This is how the page will look.",
     fail,
+    pageCount: job.page_count || 1,
+    preview: preview || null,
     fit: draft.fit,
     onFit: (fit) => rememberFit(job.id, fit),
     pages,
@@ -532,14 +520,9 @@ async function queueServerRotate(job, payload) {
       }
       if (body.pair) draft.pair = clonePair(body.pair);
       if ("angle" in body) draft.imageAngle = Number(body.angle || 0);
-      const fileRes = await fetch("/admin/jobs/" + job.id + "/file?v=" + Date.now());
-      if (!fileRes.ok) continue;
-      const bytes = new Uint8Array(await fileRes.arrayBuffer());
-      if (state.previews[job.id] || state.selected === job.id) {
-        state.previews[job.id] = { bytes, pair: draft.pair ? clonePair(draft.pair) : null, angle: draft.imageAngle };
-      }
       if (state.selected === job.id && !draft.pendingRotate) {
-        await replaceSheetsDocument(bytes, {
+        if (body.preview) adoptPreview(body.preview);
+        updateSheetsState({
           pair: draft.pair,
           selectedPage: draft.selectedPage,
           selectedSlot: draft.selectedSlot,

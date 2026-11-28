@@ -65,6 +65,28 @@ def download(request: Request, job_id: str) -> FileResponse:
     return FileResponse(path, media_type="application/pdf", filename=_download_name(job.original_name))
 
 
+@router.get("/jobs/{job_id}/previews")
+def previews(request: Request, job_id: str) -> object:
+    job = _job(request, job_id)
+    if not job.page_count:
+        raise UserError(not_found(), 404)
+    # This number changes while the pictures are made, so it must not be cached.
+    body = succeed(request.app.state.ctx.pictures.status(job.id, job.page_count))
+    body.headers["Cache-Control"] = "no-store"
+    return body
+
+
+@router.get("/jobs/{job_id}/previews/{page}")
+def preview_page(request: Request, job_id: str, page: int, v: str = "") -> FileResponse:
+    job = _job(request, job_id)
+    path = request.app.state.ctx.pictures.image(job.id, page, v)
+    # The address includes the revision, so the browser can keep this picture for good.
+    return FileResponse(path, media_type="image/jpeg", headers={
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "ETag": f'"{v}-{page}"',
+    })
+
+
 @router.post("/citizenship")
 def citizenship(request: Request, body: PairBody) -> object:
     job = request.app.state.ctx.citizenship.pair(body.ids)

@@ -11,6 +11,7 @@ from printo.domain.job import Job
 from printo.domain.status import CONVERTING, FAILED, READY, RECEIVED, STAGE_CONVERT, can_retry
 from printo.errors import UserError
 from printo.messages import convert_failed, in_trash, not_found, no_retry, preparing, ready, try_again
+from printo.pictures.maker import PictureMaker
 from printo.services.events import Events
 from printo.storage.files import Files
 from printo.storage.jobs import JobStore
@@ -19,12 +20,13 @@ log = logging.getLogger("printo.convert")
 
 
 class Converter:
-    def __init__(self, settings: Settings, jobs: JobStore, files: Files, events: Events, office: Office) -> None:
+    def __init__(self, settings: Settings, jobs: JobStore, files: Files, events: Events, office: Office, pictures: PictureMaker) -> None:
         self.settings = settings
         self.jobs = jobs
         self.files = files
         self.events = events
         self.office = office
+        self.pictures = pictures
         self._queue: queue.SimpleQueue[str | None] = queue.SimpleQueue()
         self._task: asyncio.Task[None] | None = None
 
@@ -96,6 +98,7 @@ class Converter:
         )
         if done is not None:
             log.info("ready %s (%s pages)", done.original_name, done.page_count)
+            self.pictures.schedule(done.id)
             self.events.publish_job(done)
 
     def _fail(self, job_id: str, message: str) -> None:

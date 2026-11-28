@@ -11,6 +11,7 @@ from printo.domain.rotate import parse_angle
 from printo.domain.status import PRINTING, can_print
 from printo.errors import UserError
 from printo.messages import already_printing, in_trash, not_found, not_ready, present, validation
+from printo.pictures.maker import PictureMaker
 from printo.printing.pair import recompose_pair
 from printo.storage.atomic import replace
 from printo.storage.files import Files
@@ -18,9 +19,10 @@ from printo.storage.jobs import JobStore
 
 
 class RotationService:
-    def __init__(self, jobs: JobStore, files: Files) -> None:
+    def __init__(self, jobs: JobStore, files: Files, pictures: PictureMaker) -> None:
         self.jobs = jobs
         self.files = files
+        self.pictures = pictures
         self._lock = threading.Lock()
 
     def meta(self, job_id: str) -> dict:
@@ -41,13 +43,13 @@ class RotationService:
             job = self._ready(job_id)
             if target == "pair":
                 pair = self._rotate_pair_piece(job, payload)
-                return {"job": present(job), "pair": pair}
+                return {"job": present(job), "pair": pair, "preview": self.pictures.refresh(job.id)}
             if target == "sheet":
                 pair = self._rotate_pair_sheet(job, payload)
-                return {"job": present(job), "pair": pair}
+                return {"job": present(job), "pair": pair, "preview": self.pictures.refresh(job.id)}
             if target == "image":
                 angle = self._rotate_single_image(job, payload)
-                return {"job": present(job), "angle": angle}
+                return {"job": present(job), "angle": angle, "preview": self.pictures.refresh(job.id)}
         raise UserError(validation())
 
     def _ready(self, job_id: str) -> Job:

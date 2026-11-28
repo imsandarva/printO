@@ -9,6 +9,11 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT="$(shop_port "$ROOT")"
 PREVIEW_PORT="$(shop_preview_port "$PORT")"
 cd "$ROOT"
+PYTHON="$ROOT/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  printf '%s\n' "printO isn't installed in this folder yet. From here, run: python3 -m venv .venv && .venv/bin/pip install -e ."
+  exit 1
+fi
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:$PYTHONPATH}"
 stop_active_shop "$ROOT" "$PORT" "$PREVIEW_PORT"
-exec python3 -m printo.preview "$@"
+exec "$PYTHON" -m printo.preview "$@"

@@ -9,6 +9,7 @@ from printo.domain.kinds import IMAGE, PDF
 from printo.domain.status import can_print
 from printo.errors import UserError
 from printo.messages import citizenship_choose, citizenship_failed, citizenship_pages, citizenship_same, citizenship_wait, in_trash, not_found
+from printo.pictures.maker import PictureMaker
 from printo.printing.pair import Piece, compose_pair
 from printo.services.events import Events
 from printo.storage.atomic import copy_sealed, replace
@@ -19,10 +20,11 @@ log = logging.getLogger("printo.citizenship")
 
 
 class Citizenship:
-    def __init__(self, jobs: JobStore, files: Files, events: Events) -> None:
+    def __init__(self, jobs: JobStore, files: Files, events: Events, pictures: PictureMaker) -> None:
         self.jobs = jobs
         self.files = files
         self.events = events
+        self.pictures = pictures
 
     def pair(self, ids: list[str]) -> Job:
         if len(ids) != 2 or not all(isinstance(item, str) for item in ids):
@@ -64,6 +66,7 @@ class Citizenship:
             log.exception("could not place two files on one page")
             _discard(self.files, partial, job_id)
             raise UserError(citizenship_failed()) from None
+        self.pictures.schedule(job.id)
         self.events.publish_job(job)
         log.info("citizenship %s", job.original_name)
         return job

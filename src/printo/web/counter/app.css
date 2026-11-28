@@ -1118,35 +1118,95 @@ body:has(#toast) .printer {
   transform-origin: center center;
 }
 
-.sheet-hold {
+/* The saved picture sits in its half. The paper under it stays light while it arrives. */
+.sheet-face {
   position: absolute;
   inset: 0;
-  z-index: 1;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  background: #fff;
+}
+
+.half {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.sheet.is-landscape .half.left { right: 50%; }
+.sheet.is-landscape .half.right { left: 50%; }
+
+.half[hidden] { display: none; }
+
+.crease {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 1px;
+  background: rgba(26, 23, 20, 0.08);
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
-.sheet.is-waiting .sheet-hold { display: flex; }
+.crease[hidden] { display: none; }
 
-.sheet-hold .spin { width: 22px; height: 22px; }
-
-.sheet-hold p { margin: 0; }
-
-.sheet canvas {
+.half img {
   position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  /* A picture keeps its shape. It is never pulled to fill a wider or taller sheet. */
-  object-fit: contain;
+  left: 50%;
+  top: 50%;
+  max-width: none;
   background: #fff;
   filter: grayscale(1);
   transform-origin: center center;
+  pointer-events: none;
+  user-select: none;
+}
+
+.half img.is-placed {
+  transition: transform 0.21s cubic-bezier(0.22, 1, 0.36, 1), width 0.21s cubic-bezier(0.22, 1, 0.36, 1), height 0.21s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Only while a new file's pictures are still being made. Scrolling never brings this back. */
+.preview-wait {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(26, 23, 20, 0.08);
+  background: rgba(255, 252, 247, 0.94);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 10px 28px rgba(70, 48, 24, 0.1);
+  color: var(--ink);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: veil-in 0.22s ease;
+}
+
+.preview-wait.has-pages {
+  top: auto;
+  bottom: 14px;
+  transform: translateX(-50%);
+}
+
+.preview-wait[hidden] { display: none; }
+
+.preview-wait .spin {
+  width: 15px;
+  height: 15px;
+  border-top-color: var(--accent-deep);
+}
+
+.preview-wait p {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .sheet.is-picked-left::after,
@@ -2078,7 +2138,8 @@ body:has(#toast) .printer {
   .rotate-btn,
   .rotate-scope,
   .sheet.is-selectable,
-  .pair-slot {
+  .pair-slot,
+  .half img.is-placed {
     transition: none;
   }
 
@@ -2106,6 +2167,8 @@ body:has(#toast) .printer {
   .tick.on .ord,
   .caret,
   .spin,
+  .half img.is-placed,
+  .preview-wait,
   .processing-card,
   .rotate-scope,
   .sheet.is-selected::after {

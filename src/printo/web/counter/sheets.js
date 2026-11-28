@@ -1,23 +1,18 @@
-/* The sheet on the desk. Drawn here, so the browser's PDF window never frames it.
-   The sheet is always A4, portrait, the paper that prints. A page keeps its own shape and sits in the middle.
-   The phone keeps the viewer; this page uses that same copy.
-   A page choice only changes which sheets are on the desk. The file stays open. */
+/* The sheet on the desk. Each page is a picture saved when the file was prepared.
+   Turning a page, or laying the next one beside it, only moves those pictures.
+   The file is not opened here. A picture that scrolls far away leaves the screen,
+   and comes back from the browser's own cache. */
 
-import * as pdfjs from "/c/pdf.min.mjs";
 import { holdPages } from "./bar.js";
 import { el } from "./dom.js";
 import { clampFit, sizeControl } from "./fit.js";
-import { landscapePairs, paintLandscapeSheet } from "./landscape.js";
-import { cellNeed, clearProxies, createProxyCache, dropProxy, evictProxies, holdProxy, pageProxy, paintSheet, peekProxy, proxySharp, quarter, rasterEdge, turnRatio } from "./proxy.js";
+import { landscapePairs } from "./landscape.js";
+import { loadPicture, pictureUrl, placePicture, releasePicture } from "./pictures.js";
 import { createRotateDock, flickIcon, paintPairSlots, syncRotateDock } from "./rotate.js";
 
-const WORKER = "/c/pdf.worker.min.mjs";
 const NEAR = 480;
 
-pdfjs.GlobalWorkerOptions.workerSrc = WORKER;
-
 let live = null;
-const waits = new WeakMap();
 
 export function closeSheets() {
   if (!live) return;
@@ -26,13 +21,17 @@ export function closeSheets() {
   shutdown(view);
 }
 
-export function showSheets(slot, id, bytes, copy) {
+export function showSheets(slot, id, copy) {
   closeSheets();
+  const preview = copy.preview || {};
   const view = {
-    id, open: true, mark: 1, doc: null, tasks: [], observer: null, resize: null, hold: null, root: null,
+    id, open: true, mark: 1, observer: null, resize: null, hold: null, root: null,
     fit: clampFit(copy.fit), onFit: copy.onFit || null, caption: copy.caption, fail: copy.fail,
     pages: copy.pages ? copy.pages.slice() : null, pool: new Map(), stack: null, scroller: null, frame: null,
-    stage: null, dock: null, shown: null, gen: 0, docGen: 0, veil: null, timer: 0, running: false, again: false,
+    stage: null, dock: null, shown: null, gen: 0, wait: null, follow: 0, poll: 0, timer: 0,
+    running: false, again: false,
+    pageCount: Math.max(1, copy.pageCount || preview.total || 1),
+    revision: preview.revision || "", ready: Number(preview.ready) || 0,
     rotations: copy.rotations ? { ...copy.rotations } : {},
     pair: copy.pair || null,
     canRotate: Boolean(copy.canRotate),
@@ -45,19 +44,19 @@ export function showSheets(slot, id, bytes, copy) {
     onRotate: copy.onRotate || null,
     landscape: Boolean(copy.landscape),
     onLandscape: copy.onLandscape || null,
-    cache: createProxyCache(),
   };
   live = view;
-  read(view, slot, bytes);
+  place(view, slot);
+  if (view.ready < view.pageCount) follow(view);
 }
 
-/* Which pages will print. Called again as the choice changes; the PDF is not opened twice. */
+/* Which pages will print. Called again as the choice changes; nothing is fetched again. */
 export function focusSheets(pages) {
   if (!live || !pages || !pages.length) return;
   live.pages = pages.slice();
   if (!live.stack) return;
   if (live.timer) clearTimeout(live.timer);
-  live.timer = setTimeout(() => { live.timer = 0; if (live && live.open) kick(live); }, 80);
+  live.timer = setTimeout(() => { if (!live || !live.open) return; live.timer = 0; kick(live); }, 80);
 }
 
 export function updateSheetsState(next) {
@@ -70,74 +69,38 @@ export function updateSheetsState(next) {
   syncSelection(live);
 }
 
-/* Toggle landscape 2-up. The old picture is dropped in this same turn, then the
-   pictures already on screen are laid into the new shape. A missing half stays blank. */
+/* The pictures already on screen are laid into the new shape. A missing half stays blank. */
 export function setLandscapeMode(on) {
   if (!live || !live.open) return;
   live.landscape = Boolean(on);
   live.mark += 1;
   dropVeil(live);
   applyLandscapeStage(live);
-  if (live.pool) {
-    for (const sheet of live.pool.values()) {
-      forget(sheet);
-      sheet.classList.toggle("is-landscape", live.landscape);
-      clearPicture(sheet);
-    }
-  }
-  if (live.stack) {
-    const numbers = wanted(live);
-    live.shown = keyOf(numbers);
-    mount(live, numbers);
-    showHeld(live);
-    if (live.scroller) drawVisible(live, live.scroller, live.stack);
-  }
+  if (!live.stack) { syncSelection(live); return; }
+  const numbers = wanted(live);
+  live.shown = keyOf(numbers);
+  mount(live, numbers);
+  drawVisible(live, live.scroller, live.stack);
   syncSelection(live);
 }
 
 export function rotateSheetsInPlace(rotations, targetPages) {
-  if (!live || !live.open || !live.doc || !live.stack) return;
+  if (!live || !live.open || !live.stack) return;
   live.rotations = { ...rotations };
-  live.mark += 1;
   const targets = targetPages && targetPages.length ? new Set(targetPages) : null;
   for (const sheet of live.pool.values()) {
     const num = Number(sheet.dataset.page);
-    if (targets && !targets.has(num)) continue;
-    if (sheet.isConnected && isNearViewport(live.scroller, sheet)) turnSheet(live, sheet);
-    else { forget(sheet); if (sheet.isConnected) draw(live, sheet); }
+    const mate = Number(sheet.dataset.mate) || 0;
+    if (targets && !targets.has(num) && !(mate && targets.has(mate))) continue;
+    placeSheet(live, sheet);
   }
 }
 
-export async function replaceSheetsDocument(bytes, next = {}) {
-  if (!live || !live.open || !live.stack) return;
-  const view = live;
-  const docGen = ++view.docGen;
-  let newDoc = null;
-  try {
-    newDoc = await openDocument(bytes);
-    if (!view.open || view.docGen !== docGen) return;
-    cancel(view);
-    clearProxies(view.cache);
-    const oldDoc = view.doc;
-    view.doc = newDoc;
-    newDoc = null;
-    if ("pair" in next) view.pair = next.pair;
-    if ("canRotate" in next) view.canRotate = Boolean(next.canRotate);
-    if ("selectedPage" in next) view.selectedPage = next.selectedPage;
-    if ("selectedSlot" in next) view.selectedSlot = next.selectedSlot;
-    if ("rotations" in next) view.rotations = { ...(next.rotations || {}) };
-    view.mark += 1;
-    for (const sheet of view.pool.values()) {
-      if (sheet.isConnected && isNearViewport(view.scroller, sheet)) swapSheet(view, sheet);
-      else forget(sheet);
-    }
-    syncSelection(view);
-    if (oldDoc) oldDoc.destroy();
-  } catch {
-    /* Keep the previous crisp document if a replacement read is aborted. */
-  } finally {
-    if (newDoc) newDoc.destroy();
-  }
+/* A photo or a Citizenship sheet was rebuilt. Swap in the new picture when it is here. */
+export function adoptPreview(status) {
+  if (!live || !live.open || !status) return;
+  applyStatus(live, status);
+  if (live.ready < live.pageCount) follow(live);
 }
 
 export function pulseRotateButton() {
@@ -148,44 +111,16 @@ export function pulseRotateButton() {
 function shutdown(view) {
   view.open = false;
   view.gen += 1;
-  view.docGen += 1;
+  view.follow += 1;
   if (view.timer) clearTimeout(view.timer);
-  view.veil?.remove();
-  view.veil = null;
+  if (view.poll) clearTimeout(view.poll);
+  view.wait?.remove();
+  view.wait = null;
   view.hold?.close();
   view.observer?.disconnect();
   view.resize?.disconnect();
-  cancel(view);
-  if (view.pool) for (const sheet of view.pool.values()) clearWait(sheet);
-  clearProxies(view.cache);
+  if (view.pool) for (const sheet of view.pool.values()) releaseSheet(sheet);
   view.pool = null;
-  const doc = view.doc;
-  view.doc = null;
-  if (doc) doc.destroy();
-}
-
-function cancel(view) {
-  for (const task of view.tasks) task.cancel?.();
-  view.tasks.length = 0;
-}
-
-async function read(view, slot, bytes) {
-  let doc = null;
-  try {
-    doc = await openDocument(bytes);
-    if (!current(view, slot)) return;
-    view.doc = doc;
-    doc = null;
-    await place(view, slot);
-  } catch {
-    if (current(view, slot)) fail(slot, view.fail);
-  } finally {
-    if (doc) doc.destroy();
-  }
-}
-
-function openDocument(bytes) {
-  return pdfjs.getDocument({ data: bytes.slice(), disableAutoFetch: true, disableStream: true, isEvalSupported: false, useSystemFonts: true }).promise;
 }
 
 function place(view, slot) {
@@ -201,8 +136,10 @@ function place(view, slot) {
     onClear: () => view.onClearSelection?.(),
     onLandscape: () => view.onLandscape?.(),
   });
+  const wait = el("div", { class: "preview-wait", attrs: { hidden: "hidden", role: "status" } });
+  wait.append(el("span", { class: "spin", attrs: { "aria-hidden": "true" } }), el("p", { text: "Preparing preview…" }));
   held.frame.insertBefore(stage, scroller);
-  stage.append(scroller);
+  stage.append(scroller, wait);
   const preview = column(held.frame, dock, view);
   if (!current(view, slot)) { held.close(); return; }
   view.hold = held;
@@ -210,6 +147,7 @@ function place(view, slot) {
   view.frame = held.frame;
   view.stage = stage;
   view.dock = dock;
+  view.wait = wait;
   view.scroller = scroller;
   view.stack = stack;
   slot.replaceChildren(preview);
@@ -220,8 +158,9 @@ function place(view, slot) {
   const pages = wanted(view);
   mount(view, pages);
   view.shown = keyOf(pages);
+  paintWait(view);
   syncSelection(view);
-  requestAnimationFrame(() => drawVisible(view, scroller, stack));
+  requestAnimationFrame(() => { if (view.open) drawVisible(view, scroller, stack); });
 }
 
 function column(frame, dock, view) {
@@ -239,7 +178,7 @@ function onSize(view, exact, shown) {
   view.onFit?.(shown);
 }
 
-/* Scale the already-drawn page. Redrawing it on every move would stutter. */
+/* Scale the already-drawn page. The picture is not fetched again while the slider moves. */
 function matchPaper(view, scroller) {
   const width = scroller.clientWidth;
   if (view.root && width) view.root.style.setProperty("--paper", width + "px");
@@ -247,52 +186,54 @@ function matchPaper(view, scroller) {
 
 function applyScale(node, fit) {
   if (!node) return;
-  // 100 is the drawn page, left unscaled so it stays sharp. Above that, the sheet cuts off whatever passes the edge.
   if (Math.abs(fit - 100) < 0.05) { node.classList.remove("fitted"); node.style.removeProperty("--fit"); return; }
   node.style.setProperty("--fit", (fit / 100).toFixed(4));
   node.classList.add("fitted");
 }
 
-/* Switch stage and sheet-frame aspect-ratio between landscape (2-up) and portrait. */
 function applyLandscapeStage(view) {
   if (!view.stage) return;
-  /* A4 portrait: 210/297 ≈ 0.7071. Landscape: 297/210 ≈ 1.4142. */
   const ratio = view.landscape ? "1.41421356" : "0.7070707071";
-  /* Override the stage aspect-ratio inline so it beats the CSS var(--sheet). */
   view.stage.style.aspectRatio = ratio;
-  /* Widen/narrow the sheet-frame by updating --sheet on the frame element. */
-  const frameEl = view.frame;
-  if (frameEl) frameEl.style.setProperty("--sheet", ratio);
-  /* Trigger a paper-width sync so the dock/caption align. */
+  if (view.frame) view.frame.style.setProperty("--sheet", ratio);
   if (view.scroller) matchPaper(view, view.scroller);
 }
 
 function blank(view, number) {
-  const sheet = el("div", { class: "sheet" });
+  const sheet = el("div", { class: view.landscape ? "sheet is-landscape" : "sheet" });
   sheet.dataset.page = String(number);
-  /* In landscape 2-up mode, each sheet card is wider (landscape ratio). */
-  if (view.landscape) sheet.classList.add("is-landscape");
   const media = el("div", { class: "sheet-media" });
+  const face = el("div", { class: "sheet-face" });
+  const left = el("div", { class: "half left" });
+  const right = el("div", { class: "half right", attrs: { hidden: "hidden" } });
+  const crease = el("i", { class: "crease", attrs: { hidden: "hidden", "aria-hidden": "true" } });
+  left.append(pictureNode());
+  right.append(pictureNode());
+  face.append(left, crease, right);
   const slots = el("div", { class: "pair-slots", attrs: { hidden: "hidden" } });
-  const hold = el("div", { class: "sheet-hold", attrs: { "aria-hidden": "true" } });
-  hold.append(el("span", { class: "spin" }), el("p", { class: "quiet", text: "Preparing this page…" }));
-  media.append(el("canvas"), hold, slots);
+  media.append(face, slots);
   sheet.append(media);
-  sheet.addEventListener("click", (event) => {
-    if (!view.canRotate) return;
-    if (isPairView(view) && !view.landscape) {
-      event.stopPropagation();
-      view.onClearSelection?.();
-      return;
-    }
-    event.stopPropagation();
-    if (!view.landscape) { view.onSelectPage?.(number); return; }
-    const mate = Number(sheet.dataset.mate) || 0;
-    const box = sheet.getBoundingClientRect();
-    const onRight = mate && event.clientX >= box.left + box.width / 2;
-    view.onSelectPage?.(onRight ? mate : number);
-  });
+  sheet.addEventListener("click", (event) => onSheetClick(view, sheet, number, event));
   return sheet;
+}
+
+function pictureNode() {
+  const img = document.createElement("img");
+  img.alt = "";
+  img.draggable = false;
+  img.decoding = "async";
+  return img;
+}
+
+function onSheetClick(view, sheet, number, event) {
+  if (!view.canRotate) return;
+  if (isPairView(view) && !view.landscape) { event.stopPropagation(); view.onClearSelection?.(); return; }
+  event.stopPropagation();
+  if (!view.landscape) { view.onSelectPage?.(number); return; }
+  const mate = Number(sheet.dataset.mate) || 0;
+  const box = sheet.getBoundingClientRect();
+  const onRight = mate && event.clientX >= box.left + box.width / 2;
+  view.onSelectPage?.(onRight ? mate : number);
 }
 
 function isPairView(view) {
@@ -302,15 +243,10 @@ function isPairView(view) {
 function syncSelection(view) {
   if (!view.open || !view.stack) return;
   const pairActive = isPairView(view);
-  const pageCount = view.doc ? view.doc.numPages : 1;
   syncRotateDock(view.dock, {
-    canRotate: view.canRotate,
-    busy: view.busyRotate,
-    isPair: pairActive,
-    selectedPage: pairActive ? null : view.selectedPage,
-    selectedSlot: pairActive ? view.selectedSlot : null,
-    pageCount,
-    landscape: view.landscape,
+    canRotate: view.canRotate, busy: view.busyRotate, isPair: pairActive,
+    selectedPage: pairActive ? null : view.selectedPage, selectedSlot: pairActive ? view.selectedSlot : null,
+    pageCount: view.pageCount || 1, landscape: view.landscape,
   });
   for (const sheet of view.pool.values()) {
     const pageNum = Number(sheet.dataset.page);
@@ -323,19 +259,15 @@ function syncSelection(view) {
     sheet.classList.toggle("is-picked-left", Boolean(view.landscape && picked));
     sheet.classList.toggle("is-picked-right", Boolean(view.landscape && pickedMate));
     const slots = sheet.querySelector(".pair-slots");
-    if (slots) {
-      if (pairActive && view.canRotate && pageNum === 1 && !view.landscape) {
-        paintPairSlots(slots, view.pair.boxes, view.selectedSlot, (index) => view.onSelectSlot?.(index));
-      } else {
-        paintPairSlots(slots, null, null, null);
-      }
-    }
+    if (!slots) continue;
+    if (pairActive && view.canRotate && pageNum === 1 && !view.landscape) paintPairSlots(slots, view.pair.boxes, view.selectedSlot, (index) => view.onSelectSlot?.(index));
+    else paintPairSlots(slots, null, null, null);
   }
 }
 
 function listen(view, scroller, stack) {
-  view.observer = new IntersectionObserver((entries) => {
-    for (const entry of entries) if (entry.isIntersecting) draw(view, entry.target);
+  view.observer = new IntersectionObserver(() => {
+    if (view.open) drawVisible(view, scroller, stack);
   }, { root: scroller, rootMargin: NEAR + "px 0px" });
   for (const sheet of stack.children) view.observer.observe(sheet);
   let width = scroller.clientWidth;
@@ -344,49 +276,52 @@ function listen(view, scroller, stack) {
     const next = scroller.clientWidth;
     if (!next || Math.abs(next - width) < 1) return;
     width = next;
-    retarget(view, scroller, stack);
+    view.mark += 1;
+    drawVisible(view, scroller, stack);
   });
   view.resize.observe(scroller);
 }
 
-function retarget(view, scroller, stack) {
-  cancel(view);
-  view.mark += 1;
-  for (const sheet of stack.children) forget(sheet);
-  if (view.pool) for (const sheet of view.pool.values()) forget(sheet);
-  drawVisible(view, scroller, stack);
+function follow(view) {
+  const token = ++view.follow;
+  const step = () => {
+    if (!view.open || view.follow !== token) return;
+    if (view.ready >= view.pageCount) { paintWait(view); return; }
+    fetch("/admin/jobs/" + view.id + "/previews").then((res) => (res.ok ? res.json() : null)).then((body) => {
+      if (!view.open || view.follow !== token) return;
+      if (body && body.ok) applyStatus(view, body);
+      if (!view.open || view.follow !== token || view.ready >= view.pageCount) { paintWait(view); return; }
+      view.poll = setTimeout(step, 400);
+    }).catch(() => {
+      if (view.open && view.follow === token) view.poll = setTimeout(step, 700);
+    });
+  };
+  step();
 }
 
-function forget(sheet) { sheet.dataset.drawn = ""; sheet.dataset.drawing = ""; }
-
-/* Drop the bitmap before the sheet changes shape, so the old picture cannot be stretched into it. */
-function clearPicture(sheet) {
-  const canvas = sheet.querySelector(".sheet-media > canvas");
-  if (canvas) { canvas.width = 0; canvas.height = 0; delete canvas.dataset.rot; delete canvas.dataset.landscape; }
-  sheet.classList.remove("is-ready");
-  clearWait(sheet);
+function applyStatus(view, body) {
+  const revision = String(body.revision || "");
+  const ready = Number(body.ready) || 0;
+  const moved = revision !== view.revision || ready !== view.ready;
+  if (revision) view.revision = revision;
+  view.ready = ready;
+  paintWait(view);
+  if (moved && view.stack) drawVisible(view, view.scroller, view.stack);
 }
 
-/* Lay the pictures we already have into the sheet that is on screen. No file is opened here. */
-function showHeld(view) {
-  if (!view.open || !view.stack || !view.doc) return;
-  const mark = String(view.mark);
-  for (const sheet of view.stack.children) {
-    if (!isNearViewport(view.scroller, sheet)) continue;
-    const frame = frameOf(sheet);
-    const canvas = sheet.querySelector(".sheet-media > canvas");
-    if (!frame || !canvas) continue;
-    const pageNum = Number(sheet.dataset.page);
-    const rightNum = mateOf(view, pageNum);
-    const left = peekProxy(view.cache, pageNum);
-    const right = rightNum ? peekProxy(view.cache, rightNum) : null;
-    if (!left && !right) continue;
-    stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum);
-    if (sideReady(left, frame, view.landscape) && (!rightNum || sideReady(right, frame, true))) sheet.dataset.drawn = mark;
-  }
+function paintWait(view) {
+  const node = view.wait;
+  if (!node) return;
+  const total = view.pageCount || 0;
+  const ready = view.ready || 0;
+  const show = view.open && total > 0 && ready < total;
+  node.hidden = !show;
+  if (!show) return;
+  node.classList.toggle("has-pages", ready > 0);
+  const line = node.querySelector("p");
+  const text = ready > 0 ? "Preparing preview, " + ready + " of " + total : "Preparing preview…";
+  if (line && line.textContent !== text) line.textContent = text;
 }
-
-function sideReady(proxy, frame, half) { return proxySharp(proxy, cellNeed(frame, half)); }
 
 function kick(view) {
   if (view.running) { view.again = true; return; }
@@ -399,7 +334,7 @@ function kick(view) {
   });
 }
 
-/* The old view stays painted over the sheet, then dissolves once the new pages are ready. */
+/* The old view stays painted over the sheet, then dissolves once the new pages are in place. */
 async function settle(view) {
   const numbers = wanted(view);
   const key = keyOf(numbers);
@@ -416,7 +351,6 @@ async function settle(view) {
   drawVisible(view, view.scroller, view.stack);
   if (!animate) { dropVeil(view); return; }
   await whenDrawn(view, visibleSheet(view), gen);
-  // A newer choice arrived while this one was settling. Keep the veil and let that choice fade once.
   if (!view.open || view.gen !== gen || view.again || !view.veil) return;
   const veil = view.veil;
   view.veil = null;
@@ -424,7 +358,7 @@ async function settle(view) {
 }
 
 function sourcePages(view) {
-  const count = view.doc ? view.doc.numPages : 0;
+  const count = view.pageCount || 0;
   const pages = view.pages && view.pages.length ? view.pages : every(count);
   return pages.filter((number) => number >= 1 && number <= count);
 }
@@ -432,7 +366,6 @@ function sourcePages(view) {
 function wanted(view) {
   const pages = sourcePages(view);
   if (!view.landscape) { view.mates = new Map(); return pages; }
-  /* Pair the pages that will print, in that order. Page 1 beside page 3 when only the odd ones are chosen. */
   const pairs = landscapePairs(pages);
   view.mates = new Map(pairs.map(([left, right]) => [left, right || 0]));
   return pairs.map(([left]) => left);
@@ -549,11 +482,10 @@ function takeVeil(view) {
 }
 
 function paintVeil(context, sheet, dy, scale) {
-  const canvas = sheet.querySelector(".sheet-media > canvas");
-  if (!canvas || !canvas.width) return false;
   const width = sheet.clientWidth;
   const height = sheet.clientHeight;
   if (!width || !height) return false;
+  let painted = false;
   context.save();
   context.beginPath();
   context.rect(0, dy, width, height);
@@ -563,9 +495,31 @@ function paintVeil(context, sheet, dy, scale) {
     context.scale(scale, scale);
     context.translate(-width / 2, -(dy + height / 2));
   }
-  context.drawImage(canvas, 0, dy, width, height);
+  for (const img of sheet.querySelectorAll(".half img")) {
+    const half = img.parentElement;
+    if (!img.naturalWidth || !half || half.hidden) continue;
+    const w = parseFloat(img.style.width);
+    const h = parseFloat(img.style.height);
+    if (!w || !h) continue;
+    const origin = cellOrigin(half, sheet);
+    const turn = Number(img.dataset.turn) || 0;
+    context.save();
+    context.translate(origin.x + half.clientWidth / 2, dy + origin.y + half.clientHeight / 2);
+    if (turn) context.rotate((turn * Math.PI) / 180);
+    context.drawImage(img, -w / 2, -h / 2, w, h);
+    context.restore();
+    painted = true;
+  }
   context.restore();
-  return true;
+  return painted;
+}
+
+function cellOrigin(node, stop) {
+  let x = 0;
+  let y = 0;
+  let current = node;
+  while (current && current !== stop) { x += current.offsetLeft; y += current.offsetTop; current = current.offsetParent; }
+  return { x, y };
 }
 
 function fadeVeil(veil) {
@@ -592,213 +546,54 @@ function isNearViewport(scroller, sheet) {
 
 function drawVisible(view, scroller, stack) {
   releaseFar(view);
-  for (const sheet of stack.children) if (isNearViewport(scroller, sheet)) draw(view, sheet);
+  if (!stack) return;
+  for (const sheet of stack.children) if (isNearViewport(scroller, sheet)) placeSheet(view, sheet);
 }
 
-async function draw(view, sheet) {
-  const mark = String(view.mark);
-  if (!view.open || !view.doc || sheet.dataset.drawn === mark || sheet.dataset.drawing === mark) return;
-  sheet.dataset.drawing = mark;
-  const canvas = sheet.querySelector(".sheet-media > canvas");
-  try {
-    const ok = await repaint(view, sheet, canvas, () => drawing(view, sheet, mark));
-    if (ok && drawing(view, sheet, mark)) sheet.dataset.drawn = mark;
-    else if (drawing(view, sheet, mark)) clearWait(sheet);
-  } catch {
-    /* A cancelled draw, or a page that cannot be shown. The file can still be printed. */
-  } finally {
-    if (sheet.dataset.drawing === mark) sheet.dataset.drawing = "";
-  }
-}
-
-async function turnSheet(view, sheet) {
-  const mark = String(view.mark);
-  const turn = String((Number(sheet.dataset.turn || 0) || 0) + 1);
-  sheet.dataset.turn = turn;
-  sheet.dataset.drawing = mark;
-  const frame = frameOf(sheet);
-  const oldCanvas = sheet.querySelector(".sheet-media > canvas");
-  if (!frame || !oldCanvas) { sheet.dataset.drawing = ""; return; }
+function placeSheet(view, sheet) {
   const pageNum = Number(sheet.dataset.page);
-  const prev = oldCanvas.dataset.rot != null ? quarter(oldCanvas.dataset.rot) : 0;
-  const next = rotOf(view, pageNum);
-  const delta = ((next - prev) % 360 + 360) % 360;
-  const ratio = turnRatio(frame, peekProxy(view.cache, pageNum), prev, next);
-  let animDone = Promise.resolve();
-  if (!view.landscape && motionOk() && delta && oldCanvas.width > 0) {
-    oldCanvas.getAnimations().forEach((anim) => anim.cancel());
-    animDone = oldCanvas.animate(
-      [{ transform: "rotate(0deg) scale(1)" }, { transform: "rotate(" + delta + "deg) scale(" + ratio.toFixed(4) + ")" }],
-      { duration: 210, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
-    ).finished.catch(() => {});
-  }
-  const off = document.createElement("canvas");
-  try {
-    const ok = await repaint(view, sheet, off, () => view.open && sheet.dataset.turn === turn);
-    if (!ok || !view.open || sheet.dataset.turn !== turn) { if (!view.open || sheet.dataset.turn === turn) clearWait(sheet); return; }
-    await animDone;
-    if (!view.open || sheet.dataset.turn !== turn) return;
-    oldCanvas.replaceWith(off);
-    sheet.dataset.drawn = mark;
-  } catch {
-    /* A superseded turn. The previous picture stays until the next one is ready. */
-  } finally {
-    if (sheet.dataset.drawing === mark) sheet.dataset.drawing = "";
-  }
-}
-
-async function swapSheet(view, sheet) {
-  const mark = String(view.mark);
-  const turn = String((Number(sheet.dataset.turn || 0) || 0) + 1);
-  sheet.dataset.turn = turn;
-  sheet.dataset.drawing = mark;
-  const oldCanvas = sheet.querySelector(".sheet-media > canvas");
-  if (!oldCanvas) { sheet.dataset.drawing = ""; return; }
-  const off = document.createElement("canvas");
-  try {
-    const ok = await repaint(view, sheet, off, () => view.open && sheet.dataset.turn === turn);
-    if (!ok || !view.open || sheet.dataset.turn !== turn) { if (!view.open || sheet.dataset.turn === turn) clearWait(sheet); return; }
-    if (motionOk() && oldCanvas.width > 0) {
-      off.style.opacity = "0";
-      oldCanvas.after(off);
-      const fadeIn = off.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" });
-      await fadeIn.finished.catch(() => {});
-      if (!view.open || sheet.dataset.turn !== turn) { off.remove(); return; }
-      off.style.opacity = "";
-      fadeIn.cancel();
-      oldCanvas.remove();
-    } else oldCanvas.replaceWith(off);
-    sheet.dataset.drawn = mark;
-  } catch {
-    /* A superseded swap. */
-  } finally {
-    if (sheet.dataset.drawing === mark) sheet.dataset.drawing = "";
-  }
-}
-
-/* Draw from the screen picture when it exists. Open the file only for a half that has no picture yet.
-   A half that is not ready stays empty. The previous picture is never stretched into the new shape. */
-async function repaint(view, sheet, canvas, still) {
-  const frame = frameOf(sheet);
-  const pageNum = Number(sheet.dataset.page);
-  if (!frame || !canvas || !view.doc || !still()) return false;
-  const rightNum = mateOf(view, pageNum);
-  let left = peekProxy(view.cache, pageNum);
-  let right = rightNum ? peekProxy(view.cache, rightNum) : null;
-  if (left || right) stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum);
-  const leftNeed = !sideReady(left, frame, view.landscape);
-  const rightNeed = Boolean(rightNum) && !sideReady(right, frame, true);
-  if (!leftNeed && !rightNeed) return Boolean(left);
-  if (!left && !right) expectWait(sheet);
-  const edge = rasterEdge(frame);
-  let heldLeft = false;
-  let heldRight = false;
-  try {
-    if (leftNeed) {
-      left = await pageProxy(view.cache, view.doc, pageNum, edge, hooksOf(view));
-      if (!left || !still()) return false;
-      holdProxy(left);
-      heldLeft = true;
-    }
-    if (rightNeed && still()) {
-      right = await pageProxy(view.cache, view.doc, rightNum, edge, hooksOf(view));
-      if (!still()) return false;
-      if (right) { holdProxy(right); heldRight = true; }
-    }
-    if (!still() || (!left && !right)) return false;
-    stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum);
-    return true;
-  } finally {
-    if (heldLeft) dropProxy(left);
-    if (heldRight) dropProxy(right);
-  }
-}
-
-function stampSheet(view, sheet, canvas, frame, left, right, pageNum, rightNum) {
-  if (view.landscape) paintLandscapeSheet(canvas, frame, left, right, rotOf(view, pageNum), right ? rotOf(view, rightNum) : 0);
-  else paintSheet(canvas, frame, left, rotOf(view, pageNum));
-  settleWait(sheet);
-  warm(view, pageNum, rasterEdge(frame));
-  const keep = retained(view);
-  keep.add(pageNum);
-  if (rightNum) keep.add(rightNum);
-  evictProxies(view.cache, keep);
-  releaseFar(view);
-}
-
-function warm(view, pageNum, edge) {
-  const ahead = [];
   const mate = mateOf(view, pageNum);
-  if (mate) ahead.push(mate);
-  const leaders = view.landscape && view.mates ? [...view.mates.keys()] : [];
-  const at = leaders.indexOf(pageNum);
-  if (at >= 0 && leaders[at + 1]) ahead.push(leaders[at + 1], view.mates.get(leaders[at + 1]) || 0);
-  else if (!view.landscape) ahead.push(pageNum + 1);
-  for (const next of ahead) {
-    if (!next || !view.doc || next > view.doc.numPages || peekProxy(view.cache, next)) continue;
-    pageProxy(view.cache, view.doc, next, edge, hooksOf(view)).catch(() => {});
-  }
+  const right = sheet.querySelector(".half.right");
+  const crease = sheet.querySelector(".crease");
+  sheet.classList.toggle("is-landscape", Boolean(view.landscape));
+  if (right) right.hidden = !(view.landscape && mate);
+  if (crease) crease.hidden = !(view.landscape && mate);
+  showHalf(view, sheet.querySelector(".half.left"), pageNum);
+  if (view.landscape && mate) showHalf(view, right, mate);
+  else if (right) releasePicture(right.querySelector("img"));
+  sheet.dataset.drawn = String(view.mark);
 }
 
-function retained(view) {
-  const keep = new Set();
-  const last = view.doc ? view.doc.numPages : 0;
-  if (!view.stack) return keep;
-  for (const sheet of view.stack.children) {
-    if (!isNearViewport(view.scroller, sheet)) continue;
-    const num = Number(sheet.dataset.page);
-    keep.add(num);
-    if (num < last) keep.add(num + 1);
-  }
-  return keep;
+function showHalf(view, half, pageNum) {
+  if (!half || !pageNum) return;
+  const img = half.querySelector("img");
+  const url = pageNum <= view.ready ? pictureUrl(view.id, pageNum, view.revision) : "";
+  if (!img || !url) return;
+  loadPicture(img, url, () => reveal(img, rotOf(view, pageNum)));
+}
+
+function reveal(img, turn) {
+  const fresh = !img.classList.contains("is-placed");
+  placePicture(img, turn);
+  if (fresh) requestAnimationFrame(() => { if (img.isConnected) img.classList.add("is-placed"); });
 }
 
 function releaseFar(view) {
   if (!view.pool || !view.scroller) return;
   for (const sheet of view.pool.values()) {
-    if (!sheet.isConnected || sheet.dataset.drawing || isNearViewport(view.scroller, sheet)) continue;
-    const canvas = sheet.querySelector(".sheet-media > canvas");
-    if (!canvas || !canvas.width) continue;
-    canvas.width = 0;
-    canvas.height = 0;
+    if (sheet.isConnected && isNearViewport(view.scroller, sheet)) continue;
+    releaseSheet(sheet);
     sheet.dataset.drawn = "";
-    sheet.classList.remove("is-ready");
-    clearWait(sheet);
   }
 }
 
-function expectWait(sheet) {
-  if (waits.has(sheet) || sheet.classList.contains("is-ready") || sheet.classList.contains("is-waiting")) return;
-  waits.set(sheet, setTimeout(() => { if (!sheet.classList.contains("is-ready")) sheet.classList.add("is-waiting"); }, 180));
+function releaseSheet(sheet) {
+  for (const img of sheet.querySelectorAll("img")) releasePicture(img);
 }
 
-function settleWait(sheet) {
-  clearWait(sheet);
-  sheet.classList.add("is-ready");
+function rotOf(view, pageNum) {
+  const turn = ((Math.round(Number(view.rotations && view.rotations[pageNum])) || 0) % 360 + 360) % 360;
+  return turn === 90 || turn === 180 || turn === 270 ? turn : 0;
 }
-
-function clearWait(sheet) {
-  const timer = waits.get(sheet);
-  if (timer) clearTimeout(timer);
-  waits.delete(sheet);
-  sheet.classList.remove("is-waiting");
-}
-
-function rotOf(view, pageNum) { return quarter((view.rotations && view.rotations[pageNum]) || 0); }
-
-function hooksOf(view) {
-  const stamp = view.cache.stamp;
-  return { alive: () => Boolean(view.open && view.cache.stamp === stamp), track: (task) => { view.tasks.push(task); const drop = () => { const index = view.tasks.indexOf(task); if (index >= 0) view.tasks.splice(index, 1); }; task.promise.then(drop, drop); } };
-}
-
-function frameOf(sheet) {
-  const width = sheet.clientWidth;
-  const height = sheet.clientHeight;
-  return width && height ? { width, height } : null;
-}
-
-function drawing(view, sheet, mark) { return view.open && sheet.dataset.drawing === mark; }
 
 function current(view, slot) { return view.open && slot.dataset.key === view.id; }
-
-function fail(slot, text) { slot.replaceChildren(el("p", { class: "quiet", text })); }

@@ -18,6 +18,8 @@ from printo.preview.files import asset, asset_headers, counter_page, page_header
 
 _ITEM = re.compile(r"^/admin/jobs/([0-9a-f]{32})$")
 _FILE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/file$")
+_PREVIEWS = re.compile(r"^/admin/jobs/([0-9a-f]{32})/previews$")
+_PREVIEW = re.compile(r"^/admin/jobs/([0-9a-f]{32})/previews/([0-9]{1,4})$")
 _PAIR = re.compile(r"^/admin/jobs/([0-9a-f]{32})/pair$")
 _ROTATE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/rotate$")
 _PRINT = re.compile(r"^/admin/jobs/([0-9a-f]{32})/print$")
@@ -26,6 +28,7 @@ _TRASH = re.compile(r"^/admin/jobs/([0-9a-f]{32})/trash$")
 _RESTORE = re.compile(r"^/admin/jobs/([0-9a-f]{32})/restore$")
 _CITIZENSHIP = "/admin/citizenship"
 _JSON = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+_PICTURE = {"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -73,6 +76,12 @@ def route(handler: Handler, method: str, path: str) -> None:
         return
     if (found := _FILE.fullmatch(path)) and method == "GET":
         send_bytes(handler, 200, "application/pdf", handler.server.desk.file(found.group(1)), _JSON)
+        return
+    if (found := _PREVIEWS.fullmatch(path)) and method == "GET":
+        send_json(handler, {"ok": True, **handler.server.desk.preview_status(found.group(1))})
+        return
+    if (found := _PREVIEW.fullmatch(path)) and method == "GET":
+        send_picture(handler, found.group(1), found.group(2))
         return
     if (found := _PAIR.fullmatch(path)) and method == "GET":
         send_json(handler, {"ok": True, **handler.server.desk.pair_meta(found.group(1))})
@@ -215,6 +224,17 @@ def send_events_live(handler: Handler) -> None:
         handler.server.hub.unsubscribe(box)
 
 
+def send_picture(handler: Handler, job_id: str, page_text: str) -> None:
+    page = int(page_text)
+    revision = (parse_qs(urlsplit(handler.path).query).get("v") or [""])[0]
+    if not revision:
+        raise UserError(hidden(), 404)
+    body = handler.server.desk.preview_image(job_id, page, revision)
+    headers = dict(_PICTURE)
+    headers["ETag"] = f'"{revision}-{page}"'
+    send_bytes(handler, 200, "image/jpeg", body, headers)
+
+
 def send_json(handler: Handler, payload: dict, status: int = 200) -> None:
     send_bytes(handler, status, "application/json; charset=utf-8", json.dumps(payload, separators=(",", ":")).encode(), _JSON)
 
@@ -259,7 +279,8 @@ def path_of(handler: Handler) -> str:
 
 def found_any(path: str) -> bool:
     return bool(
-        path == _CITIZENSHIP or _ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PAIR.fullmatch(path)
+        path == _CITIZENSHIP or _ITEM.fullmatch(path) or _FILE.fullmatch(path) or _PREVIEWS.fullmatch(path)
+        or _PREVIEW.fullmatch(path) or _PAIR.fullmatch(path)
         or _ROTATE.fullmatch(path) or _PRINT.fullmatch(path) or _RETRY.fullmatch(path)
         or _TRASH.fullmatch(path) or _RESTORE.fullmatch(path)
     )

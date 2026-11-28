@@ -5,7 +5,6 @@
 
 import { el } from "./dom.js";
 import { landscapeIcon } from "./icons.js";
-import { blitPage, prepareSheet } from "./proxy.js";
 
 /* ─── Button ─── */
 
@@ -33,25 +32,6 @@ export function syncLandscapeButton(btn, state) {
   const label = state.landscape ? "Exit 2-up landscape" : "2-up landscape — two pages per sheet";
   btn.setAttribute("aria-label", label);
   btn.setAttribute("title", (state.landscape ? "Exit 2-up" : "2-up per sheet") + " (L)");
-}
-
-/* Two pictures already drawn, placed side by side. Nothing is rendered from the file here. */
-
-export function paintLandscapeSheet(canvas, frame, left, right, leftRot, rightRot) {
-  if (!canvas || !frame || (!left && !right)) return;
-  const ctx = prepareSheet(canvas, frame);
-  const halfW = frame.width / 2;
-  const cell = { width: halfW, height: frame.height };
-  if (left) blitPage(ctx, { ...cell, x: 0, y: 0 }, left, leftRot);
-  if (right) blitPage(ctx, { ...cell, x: halfW, y: 0 }, right, rightRot);
-  ctx.strokeStyle = "rgba(26,23,20,0.08)";
-  ctx.lineWidth = 0.5;
-  ctx.beginPath();
-  ctx.moveTo(halfW, 4);
-  ctx.lineTo(halfW, frame.height - 4);
-  ctx.stroke();
-  canvas.dataset.landscape = "1";
-  canvas.dataset.rot = String(((Number(leftRot) || 0) % 360 + 360) % 360);
 }
 
 /* ─── Pair builder ───
