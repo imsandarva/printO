@@ -79,6 +79,34 @@ def test_an_existing_queue_gains_trash_without_losing_a_file(tmp_path):
     store.db.close()
 
 
+def test_print_run_migration_keeps_legacy_visit_columns(tmp_path):
+    path = tmp_path / "printo.db"
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA user_version = 4")
+    conn.execute(
+        """CREATE TABLE jobs (
+            id TEXT PRIMARY KEY, original_name TEXT NOT NULL, kind TEXT NOT NULL, source_ext TEXT NOT NULL,
+            status TEXT NOT NULL, failure_stage TEXT, message TEXT NOT NULL, byte_size INTEGER NOT NULL,
+            page_count INTEGER, pages_spec TEXT, copies INTEGER, cups_job_id TEXT,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL, delete_after TEXT, trashed_at TEXT,
+            visit_token TEXT NOT NULL DEFAULT '', visit_code TEXT NOT NULL DEFAULT ''
+        )"""
+    )
+    conn.execute(
+        """INSERT INTO jobs (
+            id, original_name, kind, source_ext, status, message, byte_size, created_at, updated_at, visit_token, visit_code
+        ) VALUES (?, 'passport.jpg', 'image', '.jpg', 'ready', 'Ready to print.', 12, ?, ?, 'visit-token', 'visit-code')""",
+        ("d" * 32, "2026-11-21T10:03:04+00:00", "2026-11-21T10:03:04+00:00"),
+    )
+    conn.commit()
+    conn.close()
+    store = JobStore(Database(path), SystemClock())
+    columns = {row[1] for row in store.db.query("PRAGMA table_info(jobs)")}
+    assert {"visit_token", "visit_code", "print_total", "print_reprint_last"} <= columns
+    assert store.get("d" * 32).original_name == "passport.jpg"
+    store.db.close()
+
+
 def test_settings_reject_a_bad_printer(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PRINTO_PRINTER", "not a printer")

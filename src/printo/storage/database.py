@@ -143,6 +143,11 @@ def _add_print_runs(conn: sqlite3.Connection) -> None:
     try:
         conn.execute("DROP TABLE IF EXISTS jobs_next")
         conn.execute(_SCHEMA[0].replace("CREATE TABLE IF NOT EXISTS jobs", "CREATE TABLE jobs_next", 1))
+        # Version 2 kept private visit fields after its public code was removed. Preserve any
+        # such legacy metadata while rebuilding the table for the expanded print states.
+        for row in info:
+            if row[1] not in _CORE:
+                conn.execute(f"ALTER TABLE jobs_next ADD COLUMN {_ident(row[1])} {_extra(row)}")
         conn.execute(f"INSERT INTO jobs_next ({listed}) SELECT {listed} FROM jobs")
         conn.execute("DROP TABLE jobs")
         conn.execute("ALTER TABLE jobs_next RENAME TO jobs")
