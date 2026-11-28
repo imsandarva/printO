@@ -77,7 +77,7 @@ The sheet on the counter is always A4, portrait, 210 by 297 millimetres, the pap
 
 Each page is pictured once, as a small grey image, as soon as the file is ready. Page 1 is made first, then the rest, and the pictures are kept in the job folder until the file is deleted. The counter shows those pictures. It does not open the file to draw a page. Turning a page, or laying the next one beside it, only moves the picture already saved. Scrolling away can drop the copy on screen; the saved picture stays, so scrolling back is immediate. The first time a large new file is opened, one line shows how many pictures are ready. That line does not come back later.
 
-Those choices stay a short list: which pages, how each one is turned, how large it sits, and whether two share a landscape sheet. Print turns and centers the real pages the same way, and cuts off whatever passes the edge. A single photo is the exception: it is placed again from the original picture, so a sideways photo fills the sheet instead of carrying the white around it. A Citizenship sheet is built again from its two saved pieces. The file in the queue is left as it arrived until then.
+Those choices stay a short list: which pages, how each one is turned, how large it sits, and whether two share a landscape sheet. Print turns and centers the real pages the same way, and cuts off whatever passes the edge. A single photo is the exception: it is placed again from the original picture, so a sideways photo fills the sheet instead of carrying the white around it. That new picture is what the counter shows, the same moment the turn is saved. A Citizenship sheet is built again from its two saved pieces. The file in the queue is left as it arrived until then.
 
 ## Two pages on a landscape sheet
 

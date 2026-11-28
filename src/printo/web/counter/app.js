@@ -521,7 +521,9 @@ async function queueServerRotate(job, payload) {
       if (body.pair) draft.pair = clonePair(body.pair);
       if ("angle" in body) draft.imageAngle = Number(body.angle || 0);
       if (state.selected === job.id && !draft.pendingRotate) {
-        if (body.preview) adoptPreview(body.preview);
+        // A photo is drawn again from the original. Show that picture, even if this answer left it out.
+        const preview = body.preview || await freshPreview(job.id);
+        if (preview) adoptPreview(preview);
         updateSheetsState({
           pair: draft.pair,
           selectedPage: draft.selectedPage,
@@ -536,6 +538,14 @@ async function queueServerRotate(job, payload) {
   } finally {
     draft.rotating = false;
   }
+}
+
+async function freshPreview(id) {
+  try {
+    const body = await sendJSON("GET", "/admin/jobs/" + id + "/previews");
+    if (body && body.ok && body.revision) return body;
+  } catch { /* The sheet keeps what it is showing until it is opened again. */ }
+  return null;
 }
 
 function allPageList(count) {

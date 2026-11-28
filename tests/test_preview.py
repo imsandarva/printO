@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 
 from printo.preview.paper import sheet
+from printo.preview.proxy import rotation_result
 from printo.preview.serve import already_running, start
 from printo.preview.watch import watch
 
@@ -76,6 +77,13 @@ def test_counter_opens_with_sample_files():
         assert sheet(1).startswith(b"%PDF")
     finally:
         preview.close()
+
+
+def test_turning_a_photo_keeps_the_new_picture():
+    kept = rotation_result({"job": {"id": "abc"}, "angle": 90, "preview": {"total": 1, "ready": 1, "revision": "new"}})
+    assert kept["angle"] == 90 and kept["preview"]["revision"] == "new" and kept["job"]["id"] == "abc"
+    pair = rotation_result({"job": {"id": "abc"}, "pair": {"rotations": [90, 0]}, "preview": {"revision": "sheet"}})
+    assert pair["pair"]["rotations"] == [90, 0] and pair["preview"]["revision"] == "sheet"
 
 
 def test_a_save_is_noticed(tmp_path):

@@ -50,13 +50,8 @@ class ProxyDesk:
         return {"pair": body.get("pair"), "angle": body.get("angle", 0)}
 
     def rotate(self, job_id: str, payload: dict) -> dict:
-        body = _json(self, "POST", f"jobs/{job_id}/rotate", payload)
-        out = {"job": body["job"]}
-        if "pair" in body:
-            out["pair"] = body["pair"]
-        if "angle" in body:
-            out["angle"] = body["angle"]
-        return out
+        # The new picture has to come back with the angle. Without it the sheet stays as it was.
+        return rotation_result(_json(self, "POST", f"jobs/{job_id}/rotate", payload))
 
     def print_job(self, job_id: str, pages: str, copies: int, fit: int = 100, rotations: dict | None = None, landscape: bool = False) -> dict:
         payload: dict = {"pages": pages, "copies": copies, "fit": fit}
@@ -84,6 +79,15 @@ class ProxyDesk:
 
     def printer(self) -> dict:
         return _json(self, "GET", "printer")
+
+
+def rotation_result(body: dict) -> dict:
+    """Keep the rebuilt picture with the turn. A photo is placed again; the sheet has to show that."""
+    kept = {"job": body["job"]}
+    for key in ("pair", "angle", "preview"):
+        if key in body:
+            kept[key] = body[key]
+    return kept
 
 
 def _json(desk: ProxyDesk, method: str, path: str, body: dict | None = None) -> dict:

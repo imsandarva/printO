@@ -225,7 +225,16 @@ def test_single_image_rotation_and_pdf_page_rotations(tmp_path):
         img_job = _wait(client, "sideways.jpg", {"ready"})
         rotated = client.post(f"/admin/jobs/{img_job['id']}/rotate", json={"target": "image", "angle": 90})
         assert rotated.status_code == 200 and rotated.json()["angle"] == 90
-        assert client.get(f"/admin/jobs/{img_job['id']}/pair").json()["angle"] == 90
+        first = rotated.json()["preview"]
+        assert first["ready"] == 1 and first["revision"]
+        sideways = client.get(f"/admin/jobs/{img_job['id']}/previews/1", params={"v": first["revision"]})
+        assert sideways.status_code == 200 and sideways.content.startswith(b"\xff\xd8")
+        again = client.post(f"/admin/jobs/{img_job['id']}/rotate", json={"target": "image", "angle": 180})
+        upright = again.json()["preview"]
+        assert again.status_code == 200 and upright["revision"] != first["revision"]
+        turned = client.get(f"/admin/jobs/{img_job['id']}/previews/1", params={"v": upright["revision"]})
+        assert turned.status_code == 200 and turned.content != sideways.content
+        assert client.get(f"/admin/jobs/{img_job['id']}/pair").json()["angle"] == 180
         img_pdf = PdfReader(str(ctx.files.document(img_job["id"]))).pages[0]
         assert float(img_pdf.mediabox.width) == pytest.approx(A4_WIDTH, abs=2)
         assert float(img_pdf.mediabox.height) == pytest.approx(A4_HEIGHT, abs=2)

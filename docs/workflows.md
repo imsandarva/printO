@@ -54,7 +54,7 @@ The counter screen puts the file list on the left, the print controls beside it,
 | `GET /admin/jobs/{id}/previews` | How many page pictures are ready: `total`, `ready`, and `revision`. Not cached. |
 | `GET /admin/jobs/{id}/previews/{page}?v={revision}` | One grey picture of that page. Kept by the browser; a new revision is a new address. |
 | `GET /admin/jobs/{id}/pair` | Normalized Citizenship slot boxes and saved rotation state (`pair` and `angle`). |
-| `POST /admin/jobs/{id}/rotate` | Rotate a Citizenship front/back slot (`target: "pair"`), whole Citizenship sheet (`"sheet"`), or single photo (`"image"`) clockwise. |
+| `POST /admin/jobs/{id}/rotate` | Rotate a Citizenship front/back slot (`target: "pair"`), whole Citizenship sheet (`"sheet"`), or single photo (`"image"`) clockwise. The answer includes `preview` (`total`, `ready`, `revision`) so the sheet can show the new picture. |
 | `POST /admin/jobs/{id}/print` | Body `{"pages": "all", "copies": 1, "fit": 100, "rotations": {"2": 90}, "landscape": true}`. `fit` (40–125), `rotations` (1-based page to 0/90/180/270), and `landscape` (two pages on each sheet) are optional. |
 | `POST /admin/jobs/{id}/stop` | Finishes the one page already with CUPS, then stops before another page is sent. |
 | `POST /admin/jobs/{id}/continue` | Continues a stopped run from its next unconfirmed page. |
